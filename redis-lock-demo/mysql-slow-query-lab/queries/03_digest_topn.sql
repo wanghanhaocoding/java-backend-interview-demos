@@ -1,0 +1,11 @@
+SELECT
+    DIGEST_TEXT,
+    COUNT_STAR,
+    ROUND(SUM_TIMER_WAIT / 1000000000000, 2) AS total_sec,
+    ROUND(AVG_TIMER_WAIT / 1000000000, 2) AS avg_ms,
+    SUM_ROWS_EXAMINED,
+    SUM_ROWS_SENT
+FROM performance_schema.events_statements_summary_by_digest
+WHERE SCHEMA_NAME = 'slow_demo'
+ORDER BY AVG_TIMER_WAIT DESC
+LIMIT 10;

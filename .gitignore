@@ -1,0 +1,14 @@
+target/
+**/target/
+.idea/
+**/.idea/
+.claude/
+**/.claude/
+.workflow/
+**/.workflow/
+**/.git.embedded-backup/
+*.iml
+*.log
+.DS_Store
+redis-lock-demo/Redis-x64-5.0.14.1/
+redis-lock-demo/Redis-x64-5.0.14.1.zip

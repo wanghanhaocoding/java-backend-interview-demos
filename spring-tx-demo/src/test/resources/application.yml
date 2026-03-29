@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  sql:
+    init:
+      mode: always
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+demo:
+  runner:
+    enabled: false
+logging:
+  level:
+    org.springframework.transaction.interceptor: trace

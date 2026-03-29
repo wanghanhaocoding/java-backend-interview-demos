@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mysql-slow-lab
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: slow_demo
+      MYSQL_USER: demo
+      MYSQL_PASSWORD: demo123
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql_slow_lab_data:/var/lib/mysql
+      - ./conf/my.cnf:/etc/mysql/conf.d/z-slow-lab.cnf:ro
+      - ./sql:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  mysql_slow_lab_data:

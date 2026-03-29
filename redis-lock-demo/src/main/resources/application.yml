@@ -1,0 +1,14 @@
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 3s
+
+redisson:
+  threads: 8
+  nettyThreads: 16
+
+teaching:
+  runner:
+    enabled: true
