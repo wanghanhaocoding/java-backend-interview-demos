@@ -62,13 +62,14 @@
 4. `RedissonApiDemoService`
 5. `CounterConcurrencyDemoService`
 6. `CacheConcurrencyDemoService`
-7. `ThreadPoolTeachingDemoService`
-8. `SpringAsyncPoolDemoService`
-9. `DemoRunner`
-10. `RedisLockDemoTest`
-11. `ConcurrencyDemoTest`
-12. `ThreadPoolTeachingDemoTest`
-13. `SpringAsyncPoolDemoTest`
+7. `OrderedThreadExecutionDemoService`
+8. `ThreadPoolTeachingDemoService`
+9. `SpringAsyncPoolDemoService`
+10. `DemoRunner`
+11. `RedisLockDemoTest`
+12. `ConcurrencyDemoTest`
+13. `ThreadPoolTeachingDemoTest`
+14. `SpringAsyncPoolDemoTest`
 
 ---
 
@@ -435,10 +436,13 @@ mvn spring-boot:run
 7. `RedissonClient` / `RLock` API 示例
 8. `count++` / `AtomicInteger` / `LongAdder` 并发计数对比
 9. check-then-put / `putIfAbsent` / `computeIfAbsent` 缓存初始化对比
-10. 常见线程池选择
-11. 线程池任务流转：core -> queue -> max -> reject
-12. `CallerRunsPolicy` 回压示例
-13. 线程池关闭流程示例
+10. `T1 -> T2 -> T3` 顺序执行：`join` / `CountDownLatch` / `Semaphore` / `Condition`
+11. 订单防重复提交：先查再创建 vs 先抢占再创建
+12. 常见线程池选择
+13. 线程池任务流转：core -> queue -> max -> reject
+14. `CallerRunsPolicy` 回压示例
+15. 线程池关闭流程示例
+16. `schedulerPool -> workerPool` 双线程池分工示例
 
 ---
 
@@ -460,7 +464,7 @@ mvn test
 mvn -Dtest=ConcurrencyDemoTest,ThreadPoolTeachingDemoTest test
 ```
 
-这样你不用先准备 Redis，也能先把并发计数、缓存竞态、线程池流转、拒绝策略、关闭流程这些核心 demo 跑出来。
+这样你不用先准备 Redis，也能先把并发计数、缓存竞态、线程顺序控制、线程池流转、拒绝策略、关闭流程这些核心 demo 跑出来。
 
 重点看：
 
@@ -502,6 +506,10 @@ mvn -Dtest=ConcurrencyDemoTest,ThreadPoolTeachingDemoTest test
 
 > `putIfAbsent` 只保证放入动作原子，但可能先重复创建 value；`computeIfAbsent` 更适合“key 不存在时只初始化一次”。
 
+### `T1`、`T2`、`T3` 怎么顺序执行？
+
+> 核心是让后一个线程等待前一个线程发出的“完成信号”。常见写法有 `join`、`CountDownLatch`、`Semaphore`、`ReentrantLock + Condition`。本质上都是把执行资格从 `T1` 传给 `T2`，再传给 `T3`。
+
 ### 线程池为什么会拒绝任务？
 
 > 因为线程池容量不是无限的。常见流转是先 core、再 queue、再 max，最后超出容量后才触发拒绝策略。
@@ -520,6 +528,7 @@ mvn -Dtest=ConcurrencyDemoTest,ThreadPoolTeachingDemoTest test
 - API：`api/RedissonApiDemoService.java`
 - JVM 计数器并发：`concurrency/CounterConcurrencyDemoService.java`
 - JVM 缓存并发：`concurrency/CacheConcurrencyDemoService.java`
+- JVM 顺序执行：`concurrency/OrderedThreadExecutionDemoService.java`
 - 线程池教学：`concurrency/ThreadPoolTeachingDemoService.java`
 - 串讲入口：`demo/DemoRunner.java`
 - Redis 锁测试：`src/test/java/com/example/redislockdemo/RedisLockDemoTest.java`
@@ -530,10 +539,11 @@ mvn -Dtest=ConcurrencyDemoTest,ThreadPoolTeachingDemoTest test
 
 ## 新增：JVM 并发和线程安全 demo
 
-这部分不是分布式锁，而是**单机 JVM 内多线程**最常见的两个坑：
+这部分不是分布式锁，而是**单机 JVM 内多线程**面试里最常见的三类题：
 
 1. `count++` 在并发下为什么不安全
 2. 本地缓存 `if (get == null) { put(...) }` 为什么不安全
+3. `T1`、`T2`、`T3` 怎么按顺序执行
 
 ### 1. 计数器：为什么 `count++` 会丢数据
 
@@ -614,6 +624,32 @@ if (cache.get(key) == null) {
 对应代码：
 
 - `src/main/java/com/example/redislockdemo/concurrency/CacheConcurrencyDemoService.java`
+
+### 3. 线程协调：怎么让 `T1 -> T2 -> T3` 顺序执行
+
+这道题本质不是“怎么让线程一个都不并发”，而是：
+
+- `T2` 必须等 `T1`
+- `T3` 必须等 `T2`
+- 顺序要靠同步原语保证，而不是赌 `start()` 调用顺序
+
+这个项目里直接给了 4 种可运行写法：
+
+- `join`：外层主线程显式等待前一个线程结束
+- `CountDownLatch`：前一个线程结束后给后一个线程发完成信号
+- `Semaphore`：把执行资格当成 permit 一路往后传
+- `ReentrantLock + Condition`：更接近底层条件队列和阶段切换写法
+
+你启动后会看到类似这种输出：
+
+- `join -> executionOrder=[T1, T2, T3]`
+- `CountDownLatch -> executionOrder=[T1, T2, T3]`
+- `Semaphore -> executionOrder=[T1, T2, T3]`
+- `ReentrantLock + Condition -> executionOrder=[T1, T2, T3]`
+
+对应代码：
+
+- `src/main/java/com/example/redislockdemo/concurrency/OrderedThreadExecutionDemoService.java`
 
 ---
 
@@ -727,6 +763,26 @@ Redisson 的 `RLock` 就是可重入锁。
 
 > `if (get == null) { put(...) }` 不是原子操作，多个线程可能同时发现 key 不存在，于是重复初始化。`putIfAbsent` 只能保证放入原子，`computeIfAbsent` 更适合“没有就创建一次”的缓存初始化。
 
+### 11. JVM 并发里怎么回答 `T1`、`T2`、`T3` 顺序执行
+
+最稳的说法：
+
+- `join`：适合外层线程显式串联
+- `CountDownLatch`：适合前序完成后放行后序
+- `Semaphore`：适合把执行许可往后传
+- `ReentrantLock + Condition`：适合更复杂的阶段流转和条件等待
+
+如果让我在面试里直接说，我会这样答：
+
+> 如果只是让 3 个线程按 `T1 -> T2 -> T3` 顺序执行，最直接的是 `join`，由外层线程等前一个执行完再启动下一个。如果要让线程自己协调，我更常用 `CountDownLatch` 或 `Semaphore`，本质上都是 `T1` 完成后通知 `T2`，`T2` 完成后再通知 `T3`。如果阶段更多、状态更复杂，可以用 `ReentrantLock + Condition`。核心不是靠 `start()` 顺序，而是靠前一个线程给后一个线程发“完成信号”。
+
+如果面试官继续追问“怎么选”，可以这样补：
+
+- 只是 3 个线程顺序跑一遍：`join` 最简单
+- 需要线程之间传递完成信号：`CountDownLatch`
+- 需要把执行资格一级一级往后传：`Semaphore`
+- 需要做多阶段状态控制：`ReentrantLock + Condition`
+
 ---
 
 ## 如何运行
@@ -777,7 +833,7 @@ mvn test
 mvn -Dtest=ConcurrencyDemoTest test
 ```
 
-这样你不用先准备 Redis，也能先把 `count++`、`AtomicInteger`、`LongAdder`、check-then-put、`putIfAbsent`、`computeIfAbsent` 这几组对比跑出来。
+这样你不用先准备 Redis，也能先把 `count++`、`AtomicInteger`、`LongAdder`、check-then-put、`putIfAbsent`、`computeIfAbsent`、`T1 -> T2 -> T3` 这几组对比跑出来。
 
 重点看：
 
@@ -994,6 +1050,7 @@ mvn test
 - API：`api/RedissonApiDemoService.java`
 - JVM 计数器并发：`concurrency/CounterConcurrencyDemoService.java`
 - JVM 缓存并发：`concurrency/CacheConcurrencyDemoService.java`
+- JVM 顺序执行：`concurrency/OrderedThreadExecutionDemoService.java`
 - 串讲入口：`demo/DemoRunner.java`
 - Redis 锁测试：`src/test/java/com/example/redislockdemo/RedisLockDemoTest.java`
 - JVM 并发测试：`src/test/java/com/example/redislockdemo/concurrency/ConcurrencyDemoTest.java`

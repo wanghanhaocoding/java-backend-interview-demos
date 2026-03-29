@@ -1,7 +1,7 @@
 package com.example.orderobservabilitypatterndemo.demo;
 
-import com.example.orderobservabilitypatterndemo.order.OrderFulfillmentDemoService;
 import com.example.orderobservabilitypatterndemo.pattern.DesignPatternDemoService;
+import com.example.orderobservabilitypatterndemo.treasury.TreasuryFlowDemoService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -10,25 +10,25 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "teaching.runner.enabled", havingValue = "true", matchIfMissing = true)
 public class DemoRunner implements CommandLineRunner {
 
-    private final OrderFulfillmentDemoService orderFulfillmentDemoService;
+    private final TreasuryFlowDemoService treasuryFlowDemoService;
     private final DesignPatternDemoService designPatternDemoService;
 
-    public DemoRunner(OrderFulfillmentDemoService orderFulfillmentDemoService,
+    public DemoRunner(TreasuryFlowDemoService treasuryFlowDemoService,
                       DesignPatternDemoService designPatternDemoService) {
-        this.orderFulfillmentDemoService = orderFulfillmentDemoService;
+        this.treasuryFlowDemoService = treasuryFlowDemoService;
         this.designPatternDemoService = designPatternDemoService;
     }
 
     @Override
     public void run(String... args) {
-        printTitle("1. 订单成功流转");
-        OrderFulfillmentDemoService.OrderFlowResult successResult =
-                orderFulfillmentDemoService.checkoutDemo("ORD-1001", "WALLET", 2, 5);
+        printTitle("1. 司库指令成功流转");
+        TreasuryFlowDemoService.TreasuryFlowResult successResult =
+                treasuryFlowDemoService.treasuryFlowDemo("TXN-1001", "DIRECT_BANK", 200, 500);
         successResult.steps().forEach(System.out::println);
 
-        printTitle("2. 支付失败补偿");
-        OrderFulfillmentDemoService.OrderFlowResult failedResult =
-                orderFulfillmentDemoService.checkoutDemo("ORD-1002", "CARD_FAIL", 2, 5);
+        printTitle("2. 渠道失败补偿");
+        TreasuryFlowDemoService.TreasuryFlowResult failedResult =
+                treasuryFlowDemoService.treasuryFlowDemo("TXN-1002", "DIRECT_BANK_FAIL", 200, 500);
         failedResult.steps().forEach(System.out::println);
         failedResult.compensationSteps().forEach(step -> System.out.println("compensation -> " + step));
 

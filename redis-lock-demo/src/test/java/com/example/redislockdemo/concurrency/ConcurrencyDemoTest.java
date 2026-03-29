@@ -8,6 +8,7 @@ class ConcurrencyDemoTest {
 
     private final CounterConcurrencyDemoService counterConcurrencyDemoService = new CounterConcurrencyDemoService();
     private final CacheConcurrencyDemoService cacheConcurrencyDemoService = new CacheConcurrencyDemoService();
+    private final OrderedThreadExecutionDemoService orderedThreadExecutionDemoService = new OrderedThreadExecutionDemoService();
 
     @Test
     void unsafeCountPlusPlusLosesUpdates() throws Exception {
@@ -56,5 +57,30 @@ class ConcurrencyDemoTest {
         assertThat(result.loaderCalls()).isEqualTo(1);
         assertThat(result.distinctCreatedValues()).isEqualTo(1);
         assertThat(result.finalValue()).isEqualTo("user:42-value-call-1");
+    }
+
+    @Test
+    void joinChainKeepsExpectedOrder() throws Exception {
+        assertOrdered(orderedThreadExecutionDemoService.joinChain());
+    }
+
+    @Test
+    void countDownLatchChainKeepsExpectedOrder() throws Exception {
+        assertOrdered(orderedThreadExecutionDemoService.countDownLatchChain());
+    }
+
+    @Test
+    void semaphoreChainKeepsExpectedOrder() throws Exception {
+        assertOrdered(orderedThreadExecutionDemoService.semaphoreChain());
+    }
+
+    @Test
+    void conditionChainKeepsExpectedOrder() throws Exception {
+        assertOrdered(orderedThreadExecutionDemoService.conditionChain());
+    }
+
+    private void assertOrdered(OrderedThreadExecutionDemoService.OrderedExecutionDemoResult result) {
+        assertThat(result.executionOrder()).containsExactly("T1", "T2", "T3");
+        assertThat(result.ordered()).isTrue();
     }
 }

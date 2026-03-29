@@ -14,6 +14,13 @@
 
 当前仓库里，和这三条主线最贴近的项目是：
 
+- `schedule-center-trigger-demo`
+- `schedule-center-scaling-demo`
+- `async-job-center-core-demo`
+- `async-job-center-retry-sharding-demo`
+- `treasury-receipt-state-machine-demo`
+- `treasury-plan-collection-demo`
+- `order-observability-pattern-demo`
 - `jvm-stability-interview-demo`
 - `redis-lock-demo`
 - `mq-cache-idempotency-demo`
@@ -25,6 +32,17 @@
 详细分析、补充优先级、后续建议新增 demo，见：
 
 - [RESUME_ALIGNED_EXPANSION_ANALYSIS.md](./RESUME_ALIGNED_EXPANSION_ANALYSIS.md)
+
+## 新增：简历主线 Demo
+
+这一轮已经补齐 6 个更贴你简历主线的独立 demo：
+
+- `schedule-center-trigger-demo`：ScheduleCenter 的时间索引、分钟分片、滑动时间窗扫描
+- `schedule-center-scaling-demo`：ScheduleCenter 的多机去重、预取、本地队列、双线程池、背压
+- `async-job-center-core-demo`：AsyncJobCenter 的 `server + worker`、三张核心表、`create/hold/set` 链路
+- `async-job-center-retry-sharding-demo`：AsyncJobCenter 的失败重试、`order_time`、锁演进、滚动分表
+- `treasury-receipt-state-machine-demo`：司库回执的幂等、状态机、终态保护、超时补偿、对账
+- `treasury-plan-collection-demo`：司库日计划、预算校验、固定窗口触发、归集分片、优先级公平
 
 ## 这个仓库适合什么场景
 
@@ -181,7 +199,7 @@
 
 **主题**
 
-- 订单 / 库存 / 支付建模
+- 司库回执 / 归集 / 日计划链路建模
 - 状态流转
 - 可观测性
 - 结构化日志
@@ -192,8 +210,8 @@
 
 **能回答的面试题**
 
-- 订单、库存、支付的状态流转怎么设计？
-- 支付失败后库存怎么补偿？
+- 司库指令、回执、归集链路的状态流转怎么设计？
+- 指令下发失败后额度或资源怎么补偿？
 - traceId 在后端排障里为什么重要？
 - 日志、指标、trace 分别解决什么问题？
 - 策略模式、责任链、模板方法在业务代码里怎么落地？
@@ -221,21 +239,27 @@
 
 如果你想按“最贴近简历主线 + 最容易应对真实追问”的顺序看，建议这样走：
 
-1. `spring-core-demo`
-2. `spring-tx-demo`
-3. `mysql-lock-mvcc-demo`
-4. `redis-lock-demo`
-5. `mq-cache-idempotency-demo`
-6. `distributed-tx-demo`
-7. `jvm-stability-interview-demo`
-8. `resilience-auth-demo`
-9. `order-observability-pattern-demo`
+1. `schedule-center-trigger-demo`
+2. `schedule-center-scaling-demo`
+3. `async-job-center-core-demo`
+4. `async-job-center-retry-sharding-demo`
+5. `treasury-receipt-state-machine-demo`
+6. `treasury-plan-collection-demo`
+7. `order-observability-pattern-demo`
+8. `spring-core-demo`
+9. `spring-tx-demo`
+10. `mysql-lock-mvcc-demo`
+11. `redis-lock-demo`
+12. `mq-cache-idempotency-demo`
+13. `distributed-tx-demo`
+14. `jvm-stability-interview-demo`
+15. `resilience-auth-demo`
 
 其中：
 
-- 前 7 个更偏“简历主线 + 高频追问”
+- 前 6 个是直接对应简历主线的新主干 demo
+- `order-observability-pattern-demo` 现在已经改造成更贴近司库回执 / 归集 / 日计划场景的版本，适合补“可观测性 + 设计模式”表达
 - `resilience-auth-demo` 更偏“补短板”，用于补 Spring 从零搭建、登录认证、权限控制
-- `order-observability-pattern-demo` 目前更偏通用电商题材，建议后续改造成更贴近司库回执 / 归集 / 日计划场景的版本
 
 ## 使用方式
 

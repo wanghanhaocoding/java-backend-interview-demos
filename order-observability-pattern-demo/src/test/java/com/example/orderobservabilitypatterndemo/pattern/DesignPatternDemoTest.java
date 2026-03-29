@@ -16,8 +16,8 @@ class DesignPatternDemoTest {
     void summaryShouldExposeTemplateStrategyAndValidatorChain() {
         DesignPatternDemoService.PatternSummary summary = designPatternDemoService.patternSummaryDemo();
 
-        assertThat(summary.templateName()).isEqualTo("CheckoutTemplate");
-        assertThat(summary.strategyName()).isEqualTo("WalletPaymentStrategy");
-        assertThat(summary.validatorNames()).containsExactly("PositiveQuantityValidator", "StockValidator");
+        assertThat(summary.templateName()).isEqualTo("TreasuryFlowTemplate");
+        assertThat(summary.strategyName()).isEqualTo("DirectBankDispatchStrategy");
+        assertThat(summary.validatorNames()).containsExactly("PositiveAmountValidator", "BudgetQuotaValidator");
     }
 }

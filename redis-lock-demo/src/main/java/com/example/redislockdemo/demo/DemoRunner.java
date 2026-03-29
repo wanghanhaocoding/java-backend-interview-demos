@@ -3,6 +3,7 @@ package com.example.redislockdemo.demo;
 import com.example.redislockdemo.api.RedissonApiDemoService;
 import com.example.redislockdemo.concurrency.CacheConcurrencyDemoService;
 import com.example.redislockdemo.concurrency.CounterConcurrencyDemoService;
+import com.example.redislockdemo.concurrency.OrderedThreadExecutionDemoService;
 import com.example.redislockdemo.concurrency.SpringAsyncPoolDemoService;
 import com.example.redislockdemo.concurrency.ThreadPoolTeachingDemoService;
 import com.example.redislockdemo.nativeapi.NativeRedisLockService;
@@ -28,6 +29,7 @@ public class DemoRunner implements CommandLineRunner {
     private final RedissonApiDemoService redissonApiDemoService;
     private final CounterConcurrencyDemoService counterConcurrencyDemoService;
     private final CacheConcurrencyDemoService cacheConcurrencyDemoService;
+    private final OrderedThreadExecutionDemoService orderedThreadExecutionDemoService;
     private final OrderSubmitIdempotencyDemoService orderSubmitIdempotencyDemoService;
     private final ThreadPoolTeachingDemoService threadPoolTeachingDemoService;
     private final SpringAsyncPoolDemoService springAsyncPoolDemoService;
@@ -39,6 +41,7 @@ public class DemoRunner implements CommandLineRunner {
                       RedissonApiDemoService redissonApiDemoService,
                       CounterConcurrencyDemoService counterConcurrencyDemoService,
                       CacheConcurrencyDemoService cacheConcurrencyDemoService,
+                      OrderedThreadExecutionDemoService orderedThreadExecutionDemoService,
                       OrderSubmitIdempotencyDemoService orderSubmitIdempotencyDemoService,
                       ThreadPoolTeachingDemoService threadPoolTeachingDemoService,
                       SpringAsyncPoolDemoService springAsyncPoolDemoService,
@@ -49,6 +52,7 @@ public class DemoRunner implements CommandLineRunner {
         this.redissonApiDemoService = redissonApiDemoService;
         this.counterConcurrencyDemoService = counterConcurrencyDemoService;
         this.cacheConcurrencyDemoService = cacheConcurrencyDemoService;
+        this.orderedThreadExecutionDemoService = orderedThreadExecutionDemoService;
         this.orderSubmitIdempotencyDemoService = orderSubmitIdempotencyDemoService;
         this.threadPoolTeachingDemoService = threadPoolTeachingDemoService;
         this.springAsyncPoolDemoService = springAsyncPoolDemoService;
@@ -105,7 +109,14 @@ public class DemoRunner implements CommandLineRunner {
         printCacheResult(cacheConcurrencyDemoService.computeIfAbsent("user:42", cacheThreads));
         System.out.println("结论 = putIfAbsent 能避免覆盖，但可能仍然重复创建；computeIfAbsent 更适合“只初始化一次”");
 
-        printTitle("10. 订单防重复提交：先查再创建 vs 先抢占再创建");
+        printTitle("10. 线程顺序控制：让 T1 -> T2 -> T3 按顺序执行");
+        printOrderedResult(orderedThreadExecutionDemoService.joinChain());
+        printOrderedResult(orderedThreadExecutionDemoService.countDownLatchChain());
+        printOrderedResult(orderedThreadExecutionDemoService.semaphoreChain());
+        printOrderedResult(orderedThreadExecutionDemoService.conditionChain());
+        System.out.println("结论 = join 适合外层线程串行编排；CountDownLatch、Semaphore、Condition 更适合线程之间自己传递执行资格");
+
+        printTitle("11. 订单防重复提交：先查再创建 vs 先抢占再创建");
         int submitThreads = 12;
         String requestNo = "REQ-20260329-001";
         System.out.println("同一个 requestNo 并发提交线程数 = " + submitThreads);
@@ -113,13 +124,13 @@ public class DemoRunner implements CommandLineRunner {
         printSubmitResult(orderSubmitIdempotencyDemoService.claimFirstWithRedis(requestNo, 10001L, submitThreads));
         System.out.println("结论 = 创建订单不能先查库再插入，要先用原子操作抢占 requestNo 的处理资格，再创建订单");
 
-        printTitle("11. 线程池：项目里常见的线程池选择");
+        printTitle("12. 线程池：项目里常见的线程池选择");
         threadPoolTeachingDemoService.commonPoolTypesOverview()
                 .forEach(note -> System.out.println(note.poolName() + " -> useCase=" + note.useCase()
                         + ", creation=" + note.creationStyle()
                         + ", note=" + note.note()));
 
-        printTitle("12. 线程池任务流转：core -> queue -> max -> reject");
+        printTitle("13. 线程池任务流转：core -> queue -> max -> reject");
         ThreadPoolTeachingDemoService.TaskFlowDemoResult taskFlow = threadPoolTeachingDemoService.taskFlowAndAbortPolicyDemo();
         taskFlow.submissionFlow().forEach(System.out::println);
         System.out.println("summary -> core=" + taskFlow.corePoolSize()
@@ -132,13 +143,13 @@ public class DemoRunner implements CommandLineRunner {
                 + ", rejected=" + taskFlow.rejectedTasks());
         System.out.println("结论 = 线程池会先用 core 线程，再进队列，再扩到 max，最后触发拒绝策略");
 
-        printTitle("13. 拒绝策略：CallerRunsPolicy 如何回推压力");
+        printTitle("14. 拒绝策略：CallerRunsPolicy 如何回推压力");
         ThreadPoolTeachingDemoService.CallerRunsDemoResult callerRuns = threadPoolTeachingDemoService.callerRunsPolicyDemo();
         System.out.println("callerRunsCount = " + callerRuns.callerRunsCount());
         System.out.println("executionThreads = " + callerRuns.executionThreads());
         System.out.println("结论 = CallerRunsPolicy 不会丢任务，而是让提交方线程自己干活，起到限流和回压作用");
 
-        printTitle("14. 线程池关闭：shutdown / awaitTermination / shutdownNow");
+        printTitle("15. 线程池关闭：shutdown / awaitTermination / shutdownNow");
         ThreadPoolTeachingDemoService.ShutdownDemoResult shutdown = threadPoolTeachingDemoService.shutdownLifecycleDemo();
         System.out.println("shutdownCalled = " + shutdown.shutdownCalled());
         System.out.println("rejectedAfterShutdown = " + shutdown.rejectedAfterShutdown());
@@ -148,7 +159,7 @@ public class DemoRunner implements CommandLineRunner {
         System.out.println("terminatedFinally = " + shutdown.terminatedFinally());
         System.out.println("结论 = 生产里优先 shutdown + awaitTermination，兜底才 shutdownNow");
 
-        printTitle("15. Spring 版线程池：schedulerPool -> workerPool");
+        printTitle("16. Spring 版线程池：schedulerPool -> workerPool");
         SpringAsyncPoolDemoService.AsyncDispatchResult asyncResult = springAsyncPoolDemoService.demonstrateSchedulerToWorkerFlow(2, 2);
         asyncResult.slices().forEach(slice -> {
             System.out.println(slice.sliceNo() + " -> schedulerThread=" + slice.schedulerThread());
@@ -177,6 +188,12 @@ public class DemoRunner implements CommandLineRunner {
                 + ", replayedResponses=" + result.replayedResponses()
                 + ", processingResponses=" + result.processingResponses()
                 + ", observedOrderNos=" + result.observedOrderNos());
+    }
+
+    private void printOrderedResult(OrderedThreadExecutionDemoService.OrderedExecutionDemoResult result) {
+        System.out.println(result.strategy() + " -> executionOrder=" + result.executionOrder()
+                + ", ordered=" + result.ordered()
+                + ", note=" + result.note());
     }
 
     private void printTitle(String title) {

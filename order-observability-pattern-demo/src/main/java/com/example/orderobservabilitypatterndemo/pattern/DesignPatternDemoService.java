@@ -1,6 +1,6 @@
 package com.example.orderobservabilitypatterndemo.pattern;
 
-import com.example.orderobservabilitypatterndemo.order.OrderFulfillmentDemoService;
+import com.example.orderobservabilitypatterndemo.treasury.TreasuryFlowDemoService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -8,15 +8,15 @@ import java.util.List;
 @Service
 public class DesignPatternDemoService {
 
-    private final OrderFulfillmentDemoService orderFulfillmentDemoService;
+    private final TreasuryFlowDemoService treasuryFlowDemoService;
 
-    public DesignPatternDemoService(OrderFulfillmentDemoService orderFulfillmentDemoService) {
-        this.orderFulfillmentDemoService = orderFulfillmentDemoService;
+    public DesignPatternDemoService(TreasuryFlowDemoService treasuryFlowDemoService) {
+        this.treasuryFlowDemoService = treasuryFlowDemoService;
     }
 
     public PatternSummary patternSummaryDemo() {
-        OrderFulfillmentDemoService.OrderFlowResult result =
-                orderFulfillmentDemoService.checkoutDemo("ORD-PATTERN-01", "WALLET", 1, 5);
+        TreasuryFlowDemoService.TreasuryFlowResult result =
+                treasuryFlowDemoService.treasuryFlowDemo("TXN-PATTERN-01", "DIRECT_BANK", 120, 300);
 
         return new PatternSummary(
                 result.templateName(),
