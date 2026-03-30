@@ -116,6 +116,17 @@
 - 责任链
 - 模板方法
 
+### 10. `cpu-high-troubleshooting-demo`
+
+新增覆盖：
+
+- 线上 CPU 标高排查
+- 热点线程定位
+- `top -Hp -> jstack -> async-profiler`
+- 空转循环
+- 无退避重试
+- 止血与长期治理
+
 ---
 
 ## 三、按面试模块反查项目
@@ -150,6 +161,7 @@
 
 - `jvm-stability-interview-demo`
 - `redis-lock-demo`
+- `cpu-high-troubleshooting-demo`
 
 ### 服务治理
 
@@ -183,7 +195,8 @@
 2. `redis-lock-demo`
 3. `mq-cache-idempotency-demo`
 4. `jvm-stability-interview-demo`
-5. `mysql-lock-mvcc-demo`
+5. `cpu-high-troubleshooting-demo`
+6. `mysql-lock-mvcc-demo`
 
 第三梯队：
 

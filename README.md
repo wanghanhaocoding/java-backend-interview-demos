@@ -4,6 +4,47 @@
 
 这个仓库不是一个单体项目，而是一组可以拆开学习、单独运行的最小化示例。每个 demo 都尽量围绕一条清晰主线展开：先把核心概念讲明白，再落到可运行代码和测试，最后回到“面试里怎么说”。
 
+## 第一次打开先看这里
+
+如果你第一次看这个仓库，最先要知道的不是“从哪一题开始背”，而是**每个文件夹到底负责讲什么**。
+
+可以先按你的目标选目录：
+
+- 想按简历主线看：先看 `schedule-center-*`、`async-job-center-*`、`treasury-*`
+- 想补 Java 后端基础题：先看 `spring-*`、`mysql-lock-mvcc-demo`、`redis-lock-demo`、`mq-cache-idempotency-demo`、`distributed-tx-demo`
+- 想补稳定性和排障表达：先看 `jvm-stability-interview-demo`、`cpu-high-troubleshooting-demo`
+- 想补服务治理和认证授权：看 `resilience-auth-demo`
+- 想补“可观测性 + 设计模式 + 业务表达”：看 `order-observability-pattern-demo`
+
+### 顶层目录一览
+
+| 目录 | 是干什么的 | 适合什么时候看 |
+| --- | --- | --- |
+| `spring-core-demo` | Spring IoC、Bean 生命周期、AOP 代理、循环依赖 | 面试里被问 Spring 原理题时 |
+| `spring-tx-demo` | Spring 事务、传播机制、回滚规则、代理边界 | 面试里被问 `@Transactional` 时 |
+| `mysql-lock-mvcc-demo` | MySQL 隔离级别、MVCC、锁 | 补数据库基本盘时 |
+| `redis-lock-demo` | Redis 分布式锁、Redisson、JVM 并发、线程池、慢 SQL 实验室 | 补锁、并发、线程池时 |
+| `mq-cache-idempotency-demo` | MQ 可靠性、缓存一致性、接口幂等 | 补消息、缓存、重复请求时 |
+| `distributed-tx-demo` | 本地事务、Outbox、状态机、补偿、TCC、Saga | 面试里被问分布式事务时 |
+| `resilience-auth-demo` | 限流、熔断、降级、隔离、JWT、RBAC | 补服务治理和认证授权时 |
+| `jvm-stability-interview-demo` | OOM、Full GC、死锁、故障排查表达 | 补 JVM 稳定性案例时 |
+| `cpu-high-troubleshooting-demo` | CPU 标高排查、热点线程定位、止血和长期治理 | 补线上 CPU 故障排查时 |
+| `schedule-center-trigger-demo` | ScheduleCenter 的时间索引、分钟分片、滑动时间窗扫描 | 讲调度中心“怎么触发任务”时 |
+| `schedule-center-scaling-demo` | ScheduleCenter 的多机去重、预取、本地队列、双线程池、背压 | 讲调度中心“怎么扩容和抗压”时 |
+| `async-job-center-core-demo` | AsyncJobCenter 的 `server + worker`、三张核心表、任务主链路 | 讲异步任务平台骨架时 |
+| `async-job-center-retry-sharding-demo` | AsyncJobCenter 的失败重试、`order_time`、锁演进、滚动分表 | 讲异步任务平台稳定性治理时 |
+| `treasury-receipt-state-machine-demo` | 司库回执幂等、状态机、终态保护、超时补偿、对账 | 讲回执处理和状态推进时 |
+| `treasury-plan-collection-demo` | 司库日计划、预算校验、资金归集、固定窗口、优先级公平 | 讲司库计划与归集链路时 |
+| `order-observability-pattern-demo` | 司库风格业务流、可观测性、设计模式表达 | 讲业务建模和工程表达时 |
+
+### 根目录文档
+
+| 文件 | 是干什么的 |
+| --- | --- |
+| `README.md` | 整个仓库的总导航，先看这个 |
+| `JAVA_BACKEND_INTERVIEW_DEMO_ROADMAP.md` | 按主题整理的学习路线图 |
+| `RESUME_ALIGNED_EXPANSION_ANALYSIS.md` | 解释这些 demo 为什么和你的简历主线匹配 |
+
 ## 如果你是按“我的简历”来准备
 
 这套仓库现在更适合按下面这三条主线来学，而不是继续泛化扩到所有 Java 生态题库：
@@ -22,6 +63,7 @@
 - `treasury-plan-collection-demo`
 - `order-observability-pattern-demo`
 - `jvm-stability-interview-demo`
+- `cpu-high-troubleshooting-demo`
 - `redis-lock-demo`
 - `mq-cache-idempotency-demo`
 - `distributed-tx-demo`
@@ -253,7 +295,8 @@
 12. `mq-cache-idempotency-demo`
 13. `distributed-tx-demo`
 14. `jvm-stability-interview-demo`
-15. `resilience-auth-demo`
+15. `cpu-high-troubleshooting-demo`
+16. `resilience-auth-demo`
 
 其中：
 

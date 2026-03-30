@@ -29,6 +29,7 @@
 - `mq-cache-idempotency-demo`
 - `distributed-tx-demo`
 - `jvm-stability-interview-demo`
+- `cpu-high-troubleshooting-demo`
 - `resilience-auth-demo`
 
 它们覆盖的是：
@@ -39,6 +40,7 @@
 - MQ 可靠性 / 幂等 / Outbox
 - 分布式事务 / 状态机 / 补偿
 - OOM / Full GC / 死锁
+- 线上 CPU 标高排查 / 热点线程定位 / 火焰图
 - 服务治理 / JWT / RBAC
 
 ### 2. 简历主线表达层
@@ -197,6 +199,26 @@
 
 > 如何把“可观测性”和“设计模式”讲得既像真实项目，又不脱离你的简历背景。
 
+### 8. `cpu-high-troubleshooting-demo`
+
+作用：
+
+- 补齐你主线项目里“线上 CPU 标高怎么排、怎么讲”的技术表达
+
+当前覆盖：
+
+- `ScheduleCenter` 空转扫描热点线程
+- `AsyncJobCenter` 无退避重试导致的 retry storm
+- `top -Hp -> jstack -> async-profiler` 排查路径
+- 止血和长期治理拆分
+
+适合回答：
+
+- 线上 CPU 高先看什么
+- 怎么从热点线程定位到 Java 代码
+- 为什么不是所有 CPU 高都是流量真的大
+- 调度中心和异步任务平台里哪些模型最容易把 CPU 打高
+
 ---
 
 ## 三、当前仓库里，哪些项目还应该保留
@@ -213,6 +235,7 @@
 - `redis-lock-demo`
 - `mq-cache-idempotency-demo`
 - `jvm-stability-interview-demo`
+- `cpu-high-troubleshooting-demo`
 
 原因：
 
@@ -244,7 +267,9 @@
 
 ## 四、现在还值得继续补的，不是新业务主线，而是技术专题
 
-主线 demo 这轮已经补得差不多了。接下来更值得继续做的是 4 类技术专题：
+主线 demo 这轮已经补得差不多了。
+
+其中，“线上 CPU 标高排查”这条已经额外补成了 `cpu-high-troubleshooting-demo`。接下来更值得继续做的是 4 类技术专题：
 
 ### 1. `multi-datasource-transaction-demo`
 
