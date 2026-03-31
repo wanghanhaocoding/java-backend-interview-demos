@@ -126,11 +126,13 @@ public class StateMachineDemoService {
                                                                 boolean triggerTimeoutCompensation,
                                                                 Duration overdueFor,
                                                                 Duration timeout) {
+        // 第一步只保证本地落库成功，银行处理结果不会被包含进这个本地事务。
         createInstruction(requestNo, amount);
         List<String> timeline = new ArrayList<>();
         timeline.add("1) 本地事务：创建指令单和初始状态，requestNo=" + requestNo + ", status=WAIT_RECEIPT");
         timeline.add("2) 外部系统：此时银行/第三方不在本地事务里，后续靠回执或补偿收敛结果");
 
+        // 银行回执异步到达后，通过状态机和版本控制推进状态。
         if (successReceiptFirst) {
             ReceiptApplyResult success = applyReceipt(requestNo, InstructionStatus.SUCCESS, "bank-success-first");
             timeline.add("3) 第一次回执：SUCCESS -> " + success.message() + " | reason=" + success.reason());
@@ -139,11 +141,13 @@ public class StateMachineDemoService {
             timeline.add("3) 第一次回执：PROCESSING -> " + processing.message() + " | reason=" + processing.reason());
         }
 
+        // 迟到的中间态回执不会强行覆盖已经推进到更后面的状态。
         if (appendLateProcessingReceipt) {
             ReceiptApplyResult processingLate = applyReceipt(requestNo, InstructionStatus.PROCESSING, "bank-processing-late");
             timeline.add("4) 迟到回执：PROCESSING -> " + processingLate.message() + " | reason=" + processingLate.reason());
         }
 
+        // 长时间未到终态时，靠定时补偿或对账任务把结果继续向终态收敛。
         if (triggerTimeoutCompensation) {
             backdateInstruction(requestNo, overdueFor);
             int updatedRows = reconcileTimeoutInstructions(timeout);

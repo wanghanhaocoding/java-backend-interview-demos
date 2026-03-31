@@ -6,8 +6,8 @@ public final class CaseStoryLibrary {
     }
 
     public static String oomSummary() {
-        return "AsyncJobCenter 在银行回调失败风暴下，把失败任务完整快照留在无上限本地 fallback buffer 中，"
-            + "而且还维护了多份索引，导致对象长期强引用，最终触发 OOM。排查通过监控 -> jstat -> heap dump -> MAT 收敛到 JobCallbackSnapshot。";
+        return "ScheduleCenter 在任务触发失败风暴下，把失败任务完整快照留在无上限本地 fallback buffer 中，"
+            + "而且还维护了多份索引，导致对象长期强引用，最终触发 OOM。排查通过监控 -> jstat -> heap dump -> MAT 收敛到 ScheduleTaskSnapshot。";
     }
 
     public static String fullGcSummary() {

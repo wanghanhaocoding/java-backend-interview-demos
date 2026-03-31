@@ -13,7 +13,7 @@ class CaseStudySanityTest {
 
     @Test
     void shouldProvideCaseSummaries() {
-        assertTrue(CaseStoryLibrary.oomSummary().contains("AsyncJobCenter"));
+        assertTrue(CaseStoryLibrary.oomSummary().contains("ScheduleCenter"));
         assertTrue(CaseStoryLibrary.fullGcSummary().contains("ScheduleCenter"));
         assertTrue(CaseStoryLibrary.deadlockSummary().contains("死锁"));
     }

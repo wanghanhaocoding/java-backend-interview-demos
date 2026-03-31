@@ -1,42 +1,42 @@
-# OOM 案例：AsyncJobCenter 银行回调失败风暴下，本地兜底快照设计不当导致堆内存打满
+# OOM 案例：ScheduleCenter 任务触发失败风暴下，本地补偿快照设计不当导致堆内存打满
 
 ## 一、这个案例怎么和你的简历对上
 
 这个案例最适合挂在你的：
 
-- `AsyncJobCenter 异步任务中心`
-- 任务创建 / 投递 / 调度执行 / 重试补偿
-- 高并发、失败重试、断点续做
+- `ScheduleCenter 定时调度中心`
+- 分钟分片 / 滑动时间窗 / 本地预取队列 / 失败补偿
+- 高并发触发 / 多机调度 / 下游执行链路
 
 一句话背景：
 
-> 我们在 AsyncJobCenter 里承接票据回单制作、预算分析这类异步回调任务。某次银行侧回调接口波动后，失败任务短时间暴涨。为了保证补偿可恢复，worker 本地会暂存失败任务快照，但这个兜底快照设计成了无上限内存集合，结果高峰期持续堆积，最终把堆打满。
+> 我们在 ScheduleCenter 里负责分钟级任务触发和下游执行分发。某次下游执行链路连续超时后，触发失败任务短时间暴涨。为了保证补偿可恢复，trigger 节点本地会暂存失败任务快照，但这个兜底快照设计成了无上限内存集合，结果高峰期持续堆积，最终把堆打满。
 
 ## 二、出现过程
 
 ### 1. 业务现象
 
-- 某天上午银行回调链路波动，`receipt_make` 和 `budget_analysis` 两类任务失败率明显升高
-- AsyncJobCenter worker 进程的 CPU 不是最高，但内存曲线持续上升
-- 监控先告警：Old 区使用率从 60% 一路升到 90%+，Full GC 开始出现，任务拉取 RT 抖动
+- 某天上午下游执行链路波动，`receipt_timeout_scan` 和 `budget_window_trigger` 两类任务失败率明显升高
+- ScheduleCenter trigger 节点的 CPU 不是最高，但内存曲线持续上升
+- 监控先告警：Old 区使用率从 60% 一路升到 90%+，Full GC 开始出现，任务预取 RT 抖动
 - 之后实例开始重启，日志里出现：`java.lang.OutOfMemoryError: Java heap space`
 
 ### 2. 故障影响
 
-- 单个 worker 因为 OOM 被容器拉起重启
-- 失败任务越积越多，重试队列拉长
-- 上游业务看到“处理中”状态长时间不结束，部分回单生成延迟
+- 单个 trigger 节点因为 OOM 被容器拉起重启
+- 失败任务越积越多，补偿队列拉长
+- 上游业务看到“待触发 / 处理中”状态长时间不结束，部分回单生成延迟
 
 ### 3. 更真实的项目过程是怎样的
 
 这个问题不是“代码一上线立刻炸”，而是一个比较真实的演化过程：
 
-1. 上游银行接口偶发超时，失败任务略有上升
-2. 我们原本认为 worker 本地保留失败快照只是兜底，不会很多
-3. 某次高峰期回调失败连续出现，失败任务开始批量进入本地缓冲
+1. 下游执行接口偶发超时，触发失败任务略有上升
+2. 我们原本认为 trigger 节点本地保留失败快照只是兜底，不会很多
+3. 某次高峰期连续触发失败，失败任务开始批量进入本地缓冲
 4. 本地缓冲里存的不是轻量引用，而是：
    - 任务 payload
-   - 回调 response
+   - 触发响应体
    - 错误堆栈摘要
    - 诊断 headers
 5. 而且为了方便按任务查询，又同时维护了：
@@ -63,9 +63,9 @@
 
 发现异常时间段内：
 
-- 银行回调超时日志明显增多
-- 同一批任务反复进入 retry 流程
-- 日志里能看到类似 `AsyncJobCallbackWorker fallback snapshot stored` 这种兜底日志在短时间内大量出现
+- 下游执行超时日志明显增多
+- 同一批 bucket 里的任务反复进入 fallback 流程
+- 日志里能看到类似 `ScheduleTriggerWorker fallback snapshot stored` 这种兜底日志在短时间内大量出现
 
 这一步的作用是把问题范围从“JVM 有异常”缩到：
 
@@ -89,16 +89,16 @@ jmap -dump:live,format=b,file=heap.hprof <pid>
 
 分析 heap dump 后发现：
 
-- 大量 `JobCallbackSnapshot`、`byte[]`、`String` 被 `LeakyLocalRetrySnapshotBuffer` 持有
+- 大量 `ScheduleTaskSnapshot`、`byte[]`、`String` 被 `LeakyScheduleSnapshotBuffer` 持有
 - 引用链不是只有一个 List，而是：
   - `orderedSnapshots`
   - `latestByJobId`
   - `snapshotsByBizType`
 - 每个快照里都带着：
   - 原始任务 payload
-  - 回调响应体
+  - 触发响应体
   - 错误堆栈摘要
-  - traceId / tenantId / bankCode 等诊断信息
+  - traceId / tenantId / bucket 等诊断信息
 
 这就很像真实项目里的问题：
 
@@ -106,8 +106,8 @@ jmap -dump:live,format=b,file=heap.hprof <pid>
 
 最终根因链条是：
 
-1. 上游波动导致失败任务增多
-2. worker 把失败任务完整快照放进本地兜底缓冲
+1. 下游波动导致失败任务增多
+2. trigger 节点把失败任务完整快照放进本地兜底缓冲
 3. 缓冲既没有上限，也没有 TTL，还维护了多份索引
 4. 大对象在堆里被长期强引用
 5. Minor GC 回收不掉，逐步晋升老年代
@@ -127,9 +127,9 @@ jmap -dump:live,format=b,file=heap.hprof <pid>
 ### 1. 先止血
 
 - 临时扩容实例
-- 调小单机并发拉取量
-- 暂时降低失败任务重试频率
-- 摘流异常任务类型
+- 调小单机预取量
+- 暂时降低失败任务补偿频率
+- 摘流异常 bucket
 
 这里你可以强调：
 
@@ -140,36 +140,36 @@ jmap -dump:live,format=b,file=heap.hprof <pid>
 - 去掉无上限本地快照常驻方案
 - 失败上下文改成轻量化落库，只保留必要索引字段
 - 大 payload 不再进本地长期缓冲，只保留可回溯引用
-- 给重试链路加长度阈值、退避和熔断
+- 给补偿链路加长度阈值、退避和熔断
 - 本地结构只保留短周期窗口，不再维护多份冗余索引
 
 ## 六、沉淀过程
 
 1. 补了 JVM 监控看板
-2. 建了失败任务看板
+2. 建了失败任务和异常 bucket 看板
 3. 加了“本地缓存必须有上限和淘汰策略”的编码规范
 4. 固化了 `jstat + jmap + MAT` 的排查 SOP
-5. 对 worker 的 fallback snapshot 量和 retained payload 体积补了指标
+5. 对 trigger 节点的 fallback snapshot 量和 retained payload 体积补了指标
 
 ## 七、1 分钟面试回答版
 
-> 我在 AsyncJobCenter 里遇到过一次比较真实的 OOM，场景是银行回调波动导致失败重试风暴。我们当时为了保证补偿可恢复，在 worker 本地加了一个失败任务快照缓冲，里面会保留任务 payload、回调 response、错误堆栈和一些诊断信息。平时量小没问题，但那次高峰期失败任务持续堆积，而且这个缓冲没有上限、没有淘汰，还维护了按 jobId 和业务类型的多份索引，结果堆内存一直涨。排查时我先从监控上看到 old 区持续升高、Full GC 后回落不明显，再结合日志发现失败任务和 fallback snapshot 日志一起飙升。后面用 `jstat` 看 GC 趋势、用 `jmap` 导 live heap dump，在 MAT 里定位到大量 `JobCallbackSnapshot` 被本地缓冲长期持有。解决上我们先扩容和限流止血，再把失败上下文改成轻量落库，去掉无上限本地缓存，给重试链路加上限和退避策略，最后还补了 JVM 指标和 fallback buffer 指标的监控。
+> 我在 ScheduleCenter 里遇到过一次比较真实的 OOM，场景是下游执行链路波动导致触发失败任务风暴。我们当时为了保证补偿可恢复，在 trigger 节点本地加了一个失败任务快照缓冲，里面会保留任务 payload、触发 response、错误堆栈和一些诊断信息。平时量小没问题，但那次高峰期失败任务持续堆积，而且这个缓冲没有上限、没有淘汰，还维护了按 jobId 和业务类型的多份索引，结果堆内存一直涨。排查时我先从监控上看到 old 区持续升高、Full GC 后回落不明显，再结合日志发现失败任务和 fallback snapshot 日志一起飙升。后面用 `jstat` 看 GC 趋势、用 `jmap` 导 live heap dump，在 MAT 里定位到大量 `ScheduleTaskSnapshot` 被本地缓冲长期持有。解决上我们先扩容和限流止血，再把失败上下文改成轻量落库，去掉无上限本地缓存，给补偿链路加上限和退避策略，最后还补了 JVM 指标和 fallback buffer 指标的监控。
 
 ## 八、你在项目代码里可以怎么给面试官看“这事像真的”
 
 你现在项目里对应的代码入口在：
 
 - `src/main/java/com/example/jvmstabilitydemo/oom/OomLeakDemo.java`
-- `src/main/java/com/example/jvmstabilitydemo/oom/AsyncJobFailureStormSimulator.java`
-- `src/main/java/com/example/jvmstabilitydemo/oom/LeakyLocalRetrySnapshotBuffer.java`
-- `src/main/java/com/example/jvmstabilitydemo/oom/JobCallbackSnapshot.java`
+- `src/main/java/com/example/jvmstabilitydemo/oom/ScheduleCenterTaskStormSimulator.java`
+- `src/main/java/com/example/jvmstabilitydemo/oom/LeakyScheduleSnapshotBuffer.java`
+- `src/main/java/com/example/jvmstabilitydemo/oom/ScheduleTaskSnapshot.java`
 
 这一版比之前更像真实项目，原因是：
 
-1. 不是简单 `List<byte[]>`，而是失败任务回调快照
+1. 不是简单 `List<byte[]>`，而是失败任务触发快照
 2. 快照里有业务字段、诊断 headers、payload、response、stack trace
 3. 有本地缓冲、多索引结构、无上限设计这些典型工程问题
-4. 日志输出也带了 worker 语境，比如 `AsyncJobCallbackWorker`
+4. 日志输出也带了调度中心语境，比如 `ScheduleTriggerWorker`
 
 如果面试官继续追问，你就可以说：
 

@@ -7,15 +7,15 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 模拟 AsyncJobCenter worker 在“上游回调超时 + 失败重试堆积”场景下的行为。
+ * 模拟 ScheduleCenter 在“任务触发失败 + 本地补偿快照持续堆积”场景下的行为。
  */
-public class AsyncJobFailureStormSimulator {
+public class ScheduleCenterTaskStormSimulator {
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final LeakyLocalRetrySnapshotBuffer fallbackBuffer;
+    private final LeakyScheduleSnapshotBuffer fallbackBuffer;
 
-    public AsyncJobFailureStormSimulator(LeakyLocalRetrySnapshotBuffer fallbackBuffer) {
+    public ScheduleCenterTaskStormSimulator(LeakyScheduleSnapshotBuffer fallbackBuffer) {
         this.fallbackBuffer = fallbackBuffer;
     }
 
@@ -38,11 +38,11 @@ public class AsyncJobFailureStormSimulator {
         int failed = 0;
 
         for (int i = 0; i < taskCount; i++) {
-            RetryableTaskContext context = buildContext(round, i, payloadKb);
-            CallbackAttemptResult result = invokeBankCallback(context);
+            TriggerTaskContext context = buildContext(round, i, payloadKb);
+            DispatchAttemptResult result = dispatchScheduledTask(context);
             if (!result.success()) {
                 failed++;
-                fallbackBuffer.store(JobCallbackSnapshot.from(context, result));
+                fallbackBuffer.store(ScheduleTaskSnapshot.from(context, result));
             }
         }
 
@@ -63,30 +63,30 @@ public class AsyncJobFailureStormSimulator {
         );
     }
 
-    private RetryableTaskContext buildContext(int round, int index, int payloadKb) {
-        String jobId = "AJC-RETRY-" + round + '-' + index;
+    private TriggerTaskContext buildContext(int round, int index, int payloadKb) {
+        String jobId = "SC-TRIGGER-" + round + '-' + index;
         Map<String, String> headers = new HashMap<>();
-        headers.put("bankCode", index % 2 == 0 ? "ICBC" : "CCB");
-        headers.put("scene", index % 3 == 0 ? "RECEIPT_MAKE" : "BUDGET_ANALYSIS");
+        headers.put("bucket", "2026-03-30 10:0" + (index % 6) + '_' + (index % 4));
+        headers.put("scene", index % 3 == 0 ? "RECEIPT_TIMEOUT_SCAN" : "BUDGET_WINDOW_TRIGGER");
         headers.put("traceId", UUID.randomUUID().toString());
         headers.put("tenantId", "treasury-group-A");
-        return new RetryableTaskContext(
+        return new TriggerTaskContext(
             jobId,
-            "job-config-async-callback",
-            "https://bank-gateway/callback/receipt",
-            "RETRYING",
+            "schedule-center-minute-trigger",
+            "schedulerPool->workerPool",
+            "TRIGGER_FAILED",
             headers,
             new byte[payloadKb * 1024],
-            "ticketNo=T" + round + index + ", bizNo=BIZ" + round + index + ", retryTimes=3"
+            "planId=PLAN" + round + index + ", bucket=10:0" + (index % 6) + ", retryWindow=3"
         );
     }
 
-    private CallbackAttemptResult invokeBankCallback(RetryableTaskContext context) {
+    private DispatchAttemptResult dispatchScheduledTask(TriggerTaskContext context) {
         String stack = "java.net.SocketTimeoutException: Read timed out\n"
-            + "\tat com.example.asyncjobcenter.callback.BankCallbackClient.execute(BankCallbackClient.java:87)\n"
-            + "\tat com.example.asyncjobcenter.worker.AsyncCallbackWorker.handle(AsyncCallbackWorker.java:143)";
-        byte[] response = ("HTTP/1.1 504 Gateway Timeout, jobId=" + context.jobId()).repeat(48).getBytes();
-        return new CallbackAttemptResult(false, response, stack, LocalDateTime.now());
+            + "\tat com.example.schedulecenter.dispatch.PlanDispatchClient.execute(PlanDispatchClient.java:91)\n"
+            + "\tat com.example.schedulecenter.worker.ScheduleTriggerWorker.handle(ScheduleTriggerWorker.java:156)";
+        byte[] response = ("dispatch failed: downstream timeout, jobId=" + context.jobId()).repeat(48).getBytes();
+        return new DispatchAttemptResult(false, response, stack, LocalDateTime.now());
     }
 
     private static long usedHeapBytes() {
@@ -112,7 +112,7 @@ public class AsyncJobFailureStormSimulator {
                                         String incidentHint) {
 
         public String toLogLine() {
-            return "%s WARN AsyncJobCallbackWorker - round=%d pulled=%d failed=%d localFallbackBuffer=%d retainedPayloadMb=%d heapBeforeMb=%d heapAfterMb=%d hint=%s"
+            return "%s WARN ScheduleTriggerWorker - round=%d pulled=%d failed=%d localFallbackBuffer=%d retainedPayloadMb=%d heapBeforeMb=%d heapAfterMb=%d hint=%s"
                 .formatted(LocalDateTime.now().format(TIME_FORMATTER), round, pulledTasks, failedTasks,
                     fallbackBufferSize, retainedPayloadMb, heapBeforeMb, heapAfterMb, incidentHint);
         }
@@ -123,16 +123,16 @@ public class AsyncJobFailureStormSimulator {
         }
     }
 
-    public record RetryableTaskContext(String jobId,
-                                       String configKey,
-                                       String callbackUrl,
-                                       String status,
-                                       Map<String, String> diagnosticHeaders,
-                                       byte[] taskPayload,
-                                       String retryDescription) {
+    public record TriggerTaskContext(String jobId,
+                                     String scheduleKey,
+                                     String workerRoute,
+                                     String status,
+                                     Map<String, String> diagnosticHeaders,
+                                     byte[] taskPayload,
+                                     String retryDescription) {
     }
 
-    public record CallbackAttemptResult(boolean success,
+    public record DispatchAttemptResult(boolean success,
                                         byte[] responseBody,
                                         String stackTracePreview,
                                         LocalDateTime failedAt) {

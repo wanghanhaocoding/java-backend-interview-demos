@@ -8,13 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OomSimulationTest {
 
     @Test
-    void shouldSimulateBusinessLikeFailureRound() {
-        AsyncJobFailureStormSimulator simulator = new AsyncJobFailureStormSimulator(new LeakyLocalRetrySnapshotBuffer());
-        AsyncJobFailureStormSimulator.SimulationRoundResult result = simulator.previewOneRound();
+    void shouldSimulateScheduleCenterFailureRound() {
+        ScheduleCenterTaskStormSimulator simulator = new ScheduleCenterTaskStormSimulator(new LeakyScheduleSnapshotBuffer());
+        ScheduleCenterTaskStormSimulator.SimulationRoundResult result = simulator.previewOneRound();
 
         assertNotNull(result);
         assertTrue(result.failedTasks() > 0);
         assertTrue(result.fallbackBufferSize() > 0);
-        assertTrue(result.toLogLine().contains("AsyncJobCallbackWorker"));
+        assertTrue(result.toLogLine().contains("ScheduleTriggerWorker"));
     }
 }

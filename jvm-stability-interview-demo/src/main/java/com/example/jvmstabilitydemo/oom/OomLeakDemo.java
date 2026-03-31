@@ -3,8 +3,8 @@ package com.example.jvmstabilitydemo.oom;
 /**
  * 更贴近项目语境的 OOM 教学入口。
  *
- * <p>这里不再是“单纯往 List 里塞 byte[]”，而是模拟 AsyncJobCenter 中：
- * 回调失败 -> 本地兜底快照 -> 等待后续补偿 的真实链路。</p>
+ * <p>这里不再是“单纯往 List 里塞 byte[]”，而是模拟 ScheduleCenter 中：
+ * 任务触发失败 -> 本地补偿快照堆积 -> 逐步打满堆内存 的真实链路。</p>
  */
 public class OomLeakDemo {
 
@@ -14,7 +14,7 @@ public class OomLeakDemo {
             return;
         }
 
-        AsyncJobFailureStormSimulator simulator = new AsyncJobFailureStormSimulator(new LeakyLocalRetrySnapshotBuffer());
+        ScheduleCenterTaskStormSimulator simulator = new ScheduleCenterTaskStormSimulator(new LeakyScheduleSnapshotBuffer());
         switch (args[0]) {
             case "--preview" -> System.out.println(simulator.previewOneRound());
             case "--run" -> simulator.runUntilOom();
@@ -22,8 +22,8 @@ public class OomLeakDemo {
         }
     }
 
-    public static AsyncJobFailureStormSimulator.SimulationRoundResult previewRound() {
-        AsyncJobFailureStormSimulator simulator = new AsyncJobFailureStormSimulator(new LeakyLocalRetrySnapshotBuffer());
+    public static ScheduleCenterTaskStormSimulator.SimulationRoundResult previewRound() {
+        ScheduleCenterTaskStormSimulator simulator = new ScheduleCenterTaskStormSimulator(new LeakyScheduleSnapshotBuffer());
         return simulator.previewOneRound();
     }
 

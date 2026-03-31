@@ -32,9 +32,9 @@
 如果你想再结合代码理解，可以继续看：
 
 - `oom/OomLeakDemo.java`
-- `oom/AsyncJobFailureStormSimulator.java`
-- `oom/LeakyLocalRetrySnapshotBuffer.java`
-- `oom/JobCallbackSnapshot.java`
+- `oom/ScheduleCenterTaskStormSimulator.java`
+- `oom/LeakyScheduleSnapshotBuffer.java`
+- `oom/ScheduleTaskSnapshot.java`
 - `fullgc/FullGcPressureDemo.java`
 - `deadlock/DeadlockDemo.java`
 
@@ -117,8 +117,8 @@ java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo
 ## 这套案例和你的简历怎么对应
 
 ### OOM
-- 对应：`AsyncJobCenter`
-- 关键词：银行回调失败、fallback snapshot、本地补偿缓冲、多索引强引用
+- 对应：`ScheduleCenter`
+- 关键词：触发失败、本地补偿快照、fallback snapshot、多索引强引用
 
 ### Full GC
 - 对应：`ScheduleCenter`
