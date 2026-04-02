@@ -12,3 +12,6 @@ Write-Host "java -Xms256m -Xmx256m -XX:+PrintGCDetails -XX:+PrintGCDateStamps -X
 Write-Host ""
 Write-Host "5) 运行死锁示例"
 Write-Host "java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo"
+Write-Host ""
+Write-Host "6) 运行线程定位示例"
+Write-Host "java -cp target/classes com.example.jvmstabilitydemo.thread.ThreadTroubleshootingDemo --run"

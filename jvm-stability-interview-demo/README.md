@@ -1,12 +1,13 @@
 # jvm-stability-interview-demo
 
-一个专门为**面试复盘**准备的教学项目，聚焦三类高频线上稳定性问题：
+一个专门为**面试复盘**准备的教学项目，聚焦四类高频线上稳定性问题：
 
 当前这版已经调整为 **JDK 8 可编译、可运行**，适合放到公司仍在使用 `JDK8` 的环境里演练。
 
 1. `OOM`（OutOfMemoryError）
 2. `Full GC` 频繁导致系统抖动
 3. `死锁`（Deadlock）
+4. `线程定位`（Thread dump / jstack / jcmd）
 
 这个项目现在优先对齐你简历中的第一个项目，也就是 **ScheduleCenter / bitstorm-svr-xtimer** 这条真实调度链路：
 
@@ -15,7 +16,7 @@
 - `TriggerWorker / TriggerTimerTask`：按秒扫描 minuteBucketKey
 - `TaskCache / TaskMapper / ExecutorWorker`：Redis 取数、DB fallback、执行回调
 
-目标不是单纯给你一堆概念，而是把这 3 类问题都拆成：
+目标不是单纯给你一堆概念，而是把这 4 类问题都拆成：
 
 - **出现过程**
 - **排查过程**
@@ -25,12 +26,13 @@
 
 ---
 
-## 你最先看这 4 个文件就够了
+## 你最先看这 5 个文件就够了
 
 1. `docs/oom-case.md`
 2. `docs/full-gc-case.md`
 3. `docs/deadlock-case.md`
-4. `docs/interview-cheatsheet.md`
+4. `docs/thread-troubleshooting-case.md`
+5. `docs/interview-cheatsheet.md`
 
 如果你要把这个 demo 真正部署到 Linux 服务器上，一步一步演练线上故障，再先看：
 
@@ -47,6 +49,7 @@
 - `oom/ScheduleTaskSnapshot.java`
 - `fullgc/FullGcPressureDemo.java`
 - `deadlock/DeadlockDemo.java`
+- `thread/ThreadTroubleshootingDemo.java`
 
 ---
 
@@ -61,16 +64,21 @@ src/main/java/com/example/jvmstabilitydemo/
 │   └── FullGcPressureDemo.java
 ├── deadlock/
 │   └── DeadlockDemo.java
+├── thread/
+│   └── ThreadTroubleshootingDemo.java
 └── support/
     └── CaseStoryLibrary.java
 
 src/test/java/com/example/jvmstabilitydemo/
-└── CaseStudySanityTest.java
+├── CaseStudySanityTest.java
+└── thread/
+    └── ThreadTroubleshootingDemoTest.java
 
 docs/
 ├── oom-case.md
 ├── full-gc-case.md
 ├── deadlock-case.md
+├── thread-troubleshooting-case.md
 └── interview-cheatsheet.md
 ```
 
@@ -111,7 +119,14 @@ mvn -q -DskipTests compile
 java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo
 ```
 
-### 6. 在 Linux 服务器上按步骤演练 OOM
+### 6. 运行线程定位示例
+
+```bash
+mvn -q -DskipTests compile
+java -cp target/classes com.example.jvmstabilitydemo.thread.ThreadTroubleshootingDemo --run
+```
+
+### 7. 在 Linux 服务器上按步骤演练 OOM
 
 ```bash
 chmod +x scripts/run-oom-lab.sh
@@ -124,7 +139,7 @@ chmod +x scripts/run-oom-lab.sh
 - `docs/linux-server-oom-lab.md`
 - `docs/linux-server-lab-roadmap.md`
 
-### 7. 在 Linux 服务器上手工演练死锁
+### 8. 在 Linux 服务器上手工演练死锁
 
 ```bash
 mvn -q -DskipTests compile
@@ -135,7 +150,6 @@ java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo --hol
 
 - `docs/linux-server-deadlock-lab.md`
 - `docs/linux-server-lab-roadmap.md`
-
 ---
 
 ## 推荐面试表达顺序
@@ -160,5 +174,9 @@ java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo --hol
 - 关键词：时间窗预取、本地缓冲、秒级调度、批量扫描
 
 ### 死锁
-- 对应：`ScheduleCenter / xtimer`
-- 关键词：`timer_task`、`xtimer`、停用定时器、锁顺序
+- 对应：`ScheduleCenter / xtimer`，也可以延展到 `司库信息系统 / AsyncJobCenter`
+- 关键词：`timer_task`、`xtimer`、任务状态流转、补偿线程、停用定时器、锁顺序
+
+### 线程定位
+- 对应：`AsyncJobCenter / ScheduleCenter`
+- 关键词：线程 dump、线程名、线程状态、方法栈、`jstack / jcmd`

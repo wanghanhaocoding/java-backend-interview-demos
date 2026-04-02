@@ -16,6 +16,7 @@ class CaseStudySanityTest {
         assertTrue(CaseStoryLibrary.oomSummary().contains("ScheduleCenter"));
         assertTrue(CaseStoryLibrary.fullGcSummary().contains("ScheduleCenter"));
         assertTrue(CaseStoryLibrary.deadlockSummary().contains("死锁"));
+        assertTrue(CaseStoryLibrary.threadTroubleshootingSummary().contains("线程 dump"));
     }
 
     @Test
