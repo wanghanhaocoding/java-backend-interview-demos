@@ -3,6 +3,7 @@ package com.example.redislockdemo.concurrency;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -14,7 +15,7 @@ import java.util.concurrent.locks.ReentrantLock;
 @Service
 public class OrderedThreadExecutionDemoService {
 
-    private static final List<String> EXPECTED_ORDER = List.of("T1", "T2", "T3");
+    private static final List<String> EXPECTED_ORDER = Collections.unmodifiableList(Arrays.asList("T1", "T2", "T3"));
 
     public OrderedExecutionDemoResult joinChain() throws InterruptedException {
         List<String> executionOrder = Collections.synchronizedList(new ArrayList<>());
@@ -236,11 +237,38 @@ public class OrderedThreadExecutionDemoService {
         executionOrder.add(step);
     }
 
-    public record OrderedExecutionDemoResult(String strategy, List<String> executionOrder, boolean ordered, String note) {
+    public static final class OrderedExecutionDemoResult {
+        private final String strategy;
+        private final List<String> executionOrder;
+        private final boolean ordered;
+        private final String note;
+
+        public OrderedExecutionDemoResult(String strategy, List<String> executionOrder, boolean ordered, String note) {
+            this.strategy = strategy;
+            this.executionOrder = executionOrder;
+            this.ordered = ordered;
+            this.note = note;
+        }
 
         static OrderedExecutionDemoResult of(String strategy, List<String> executionOrder, String note) {
-            List<String> snapshot = List.copyOf(executionOrder);
+            List<String> snapshot = Collections.unmodifiableList(new ArrayList<String>(executionOrder));
             return new OrderedExecutionDemoResult(strategy, snapshot, EXPECTED_ORDER.equals(snapshot), note);
+        }
+
+        public String strategy() {
+            return strategy;
+        }
+
+        public List<String> executionOrder() {
+            return executionOrder;
+        }
+
+        public boolean ordered() {
+            return ordered;
+        }
+
+        public String note() {
+            return note;
         }
     }
 

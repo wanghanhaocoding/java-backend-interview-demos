@@ -60,16 +60,47 @@ public class IdempotencyDemoService {
         steps.add("3. 首次回调把订单状态更新成 " + incomingStatus);
     }
 
-    public record SubmissionResult(
-            List<String> steps,
-            String firstSubmissionStatus,
-            String secondSubmissionStatus
-    ) {
+    public static final class SubmissionResult {
+
+        private final List<String> steps;
+        private final String firstSubmissionStatus;
+        private final String secondSubmissionStatus;
+
+        public SubmissionResult(List<String> steps, String firstSubmissionStatus, String secondSubmissionStatus) {
+            this.steps = steps;
+            this.firstSubmissionStatus = firstSubmissionStatus;
+            this.secondSubmissionStatus = secondSubmissionStatus;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public String firstSubmissionStatus() {
+            return firstSubmissionStatus;
+        }
+
+        public String secondSubmissionStatus() {
+            return secondSubmissionStatus;
+        }
     }
 
-    public record CallbackResult(
-            List<String> steps,
-            String finalStatus
-    ) {
+    public static final class CallbackResult {
+
+        private final List<String> steps;
+        private final String finalStatus;
+
+        public CallbackResult(List<String> steps, String finalStatus) {
+            this.steps = steps;
+            this.finalStatus = finalStatus;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public String finalStatus() {
+            return finalStatus;
+        }
     }
 }

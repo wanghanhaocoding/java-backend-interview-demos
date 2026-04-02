@@ -60,17 +60,48 @@ public class LockingDemoService {
         }
     }
 
-    public record GapLockResult(
-            List<String> steps,
-            boolean insertInRangeBlocked,
-            boolean insertOutOfRangeBlocked
-    ) {
+    public static final class GapLockResult {
+
+        private final List<String> steps;
+        private final boolean insertInRangeBlocked;
+        private final boolean insertOutOfRangeBlocked;
+
+        public GapLockResult(List<String> steps, boolean insertInRangeBlocked, boolean insertOutOfRangeBlocked) {
+            this.steps = steps;
+            this.insertInRangeBlocked = insertInRangeBlocked;
+            this.insertOutOfRangeBlocked = insertOutOfRangeBlocked;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public boolean insertInRangeBlocked() {
+            return insertInRangeBlocked;
+        }
+
+        public boolean insertOutOfRangeBlocked() {
+            return insertOutOfRangeBlocked;
+        }
     }
 
-    public record DeadlockResult(
-            List<String> steps,
-            boolean deadlockDetected
-    ) {
+    public static final class DeadlockResult {
+
+        private final List<String> steps;
+        private final boolean deadlockDetected;
+
+        public DeadlockResult(List<String> steps, boolean deadlockDetected) {
+            this.steps = steps;
+            this.deadlockDetected = deadlockDetected;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public boolean deadlockDetected() {
+            return deadlockDetected;
+        }
     }
 
     private static final class RangeLockManager {

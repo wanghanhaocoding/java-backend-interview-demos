@@ -59,22 +59,61 @@ public class ResilienceDemoService {
         return new BulkheadResult(accepted, rejected);
     }
 
-    public record RateLimitResult(
-            int allowedRequests,
-            int rejectedRequests
-    ) {
+    public static final class RateLimitResult {
+
+        private final int allowedRequests;
+        private final int rejectedRequests;
+
+        public RateLimitResult(int allowedRequests, int rejectedRequests) {
+            this.allowedRequests = allowedRequests;
+            this.rejectedRequests = rejectedRequests;
+        }
+
+        public int allowedRequests() {
+            return allowedRequests;
+        }
+
+        public int rejectedRequests() {
+            return rejectedRequests;
+        }
     }
 
-    public record CircuitBreakerResult(
-            List<String> steps,
-            String finalState
-    ) {
+    public static final class CircuitBreakerResult {
+
+        private final List<String> steps;
+        private final String finalState;
+
+        public CircuitBreakerResult(List<String> steps, String finalState) {
+            this.steps = steps;
+            this.finalState = finalState;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public String finalState() {
+            return finalState;
+        }
     }
 
-    public record BulkheadResult(
-            int acceptedRequests,
-            int rejectedRequests
-    ) {
+    public static final class BulkheadResult {
+
+        private final int acceptedRequests;
+        private final int rejectedRequests;
+
+        public BulkheadResult(int acceptedRequests, int rejectedRequests) {
+            this.acceptedRequests = acceptedRequests;
+            this.rejectedRequests = rejectedRequests;
+        }
+
+        public int acceptedRequests() {
+            return acceptedRequests;
+        }
+
+        public int rejectedRequests() {
+            return rejectedRequests;
+        }
     }
 
     private static final class FixedWindowRateLimiter {

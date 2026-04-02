@@ -25,10 +25,28 @@ public class DesignPatternDemoService {
         );
     }
 
-    public record PatternSummary(
-            String templateName,
-            String strategyName,
-            List<String> validatorNames
-    ) {
+    public static final class PatternSummary {
+
+        private final String templateName;
+        private final String strategyName;
+        private final List<String> validatorNames;
+
+        public PatternSummary(String templateName, String strategyName, List<String> validatorNames) {
+            this.templateName = templateName;
+            this.strategyName = strategyName;
+            this.validatorNames = validatorNames;
+        }
+
+        public String templateName() {
+            return templateName;
+        }
+
+        public String strategyName() {
+            return strategyName;
+        }
+
+        public List<String> validatorNames() {
+            return validatorNames;
+        }
     }
 }

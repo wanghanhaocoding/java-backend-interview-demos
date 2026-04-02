@@ -82,24 +82,78 @@ public class CacheConsistencyDemoService {
         return requestCount;
     }
 
-    public record CacheReadResult(
-            List<String> steps,
-            int staleCacheValue,
-            int databaseValue,
-            int cacheValue
-    ) {
+    public static final class CacheReadResult {
+
+        private final List<String> steps;
+        private final int staleCacheValue;
+        private final int databaseValue;
+        private final int cacheValue;
+
+        public CacheReadResult(List<String> steps, int staleCacheValue, int databaseValue, int cacheValue) {
+            this.steps = steps;
+            this.staleCacheValue = staleCacheValue;
+            this.databaseValue = databaseValue;
+            this.cacheValue = cacheValue;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public int staleCacheValue() {
+            return staleCacheValue;
+        }
+
+        public int databaseValue() {
+            return databaseValue;
+        }
+
+        public int cacheValue() {
+            return cacheValue;
+        }
     }
 
-    public record CacheRepairResult(
-            List<String> steps,
-            int finalReadValue,
-            int finalCacheValue
-    ) {
+    public static final class CacheRepairResult {
+
+        private final List<String> steps;
+        private final int finalReadValue;
+        private final int finalCacheValue;
+
+        public CacheRepairResult(List<String> steps, int finalReadValue, int finalCacheValue) {
+            this.steps = steps;
+            this.finalReadValue = finalReadValue;
+            this.finalCacheValue = finalCacheValue;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public int finalReadValue() {
+            return finalReadValue;
+        }
+
+        public int finalCacheValue() {
+            return finalCacheValue;
+        }
     }
 
-    public record BreakdownProtectionResult(
-            int loadersWithoutMutex,
-            int loadersWithMutex
-    ) {
+    public static final class BreakdownProtectionResult {
+
+        private final int loadersWithoutMutex;
+        private final int loadersWithMutex;
+
+        public BreakdownProtectionResult(int loadersWithoutMutex, int loadersWithMutex) {
+            this.loadersWithoutMutex = loadersWithoutMutex;
+            this.loadersWithMutex = loadersWithMutex;
+        }
+
+        public int loadersWithoutMutex() {
+            return loadersWithoutMutex;
+        }
+
+        public int loadersWithMutex() {
+            return loadersWithMutex;
+        }
     }
 }

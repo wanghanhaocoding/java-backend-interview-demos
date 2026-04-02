@@ -3,13 +3,14 @@ package com.example.mysqllockmvccdemo.mvcc;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
 public class MvccDemoService {
 
     public MvccSnapshotResult versionChainDemo() {
-        List<RowVersion> versionChain = List.of(
+        List<RowVersion> versionChain = Arrays.asList(
                 new RowVersion(1, 100, 1),
                 new RowVersion(2, 120, 2)
         );
@@ -36,18 +37,59 @@ public class MvccDemoService {
         throw new IllegalStateException("No visible version found");
     }
 
-    public record MvccSnapshotResult(
-            List<String> steps,
-            int snapshotReadValue,
-            int currentReadValue,
-            int versionCount
-    ) {
+    public static final class MvccSnapshotResult {
+
+        private final List<String> steps;
+        private final int snapshotReadValue;
+        private final int currentReadValue;
+        private final int versionCount;
+
+        public MvccSnapshotResult(List<String> steps, int snapshotReadValue, int currentReadValue, int versionCount) {
+            this.steps = steps;
+            this.snapshotReadValue = snapshotReadValue;
+            this.currentReadValue = currentReadValue;
+            this.versionCount = versionCount;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public int snapshotReadValue() {
+            return snapshotReadValue;
+        }
+
+        public int currentReadValue() {
+            return currentReadValue;
+        }
+
+        public int versionCount() {
+            return versionCount;
+        }
     }
 
-    private record RowVersion(
-            int versionId,
-            int balance,
-            int commitId
-    ) {
+    private static final class RowVersion {
+
+        private final int versionId;
+        private final int balance;
+        private final int commitId;
+
+        private RowVersion(int versionId, int balance, int commitId) {
+            this.versionId = versionId;
+            this.balance = balance;
+            this.commitId = commitId;
+        }
+
+        private int versionId() {
+            return versionId;
+        }
+
+        private int balance() {
+            return balance;
+        }
+
+        private int commitId() {
+            return commitId;
+        }
     }
 }

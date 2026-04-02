@@ -37,7 +37,7 @@ public class StateMachineDemoService {
                                                 InstructionStatus bankStatus,
                                                 String channelMessage) {
         validateReceiptStatus(bankStatus);
-        String detail = channelMessage == null || channelMessage.isBlank() ? "bank-callback" : channelMessage;
+        String detail = channelMessage == null || channelMessage.trim().isEmpty() ? "bank-callback" : channelMessage;
         return applyReceiptInternal(requestNo, bankStatus, bankReceiptNo + " | " + detail);
     }
 
@@ -186,12 +186,11 @@ public class StateMachineDemoService {
                 + ", version=" + finalRecord.version()
                 + ", lastMessage=" + finalRecord.lastMessage());
 
-        List<String> guarantees = List.of(
-                "本地事务保证：指令单和初始状态落库原子成功或一起失败",
-                "状态机保证：终态一旦写入，迟到的中间态回执不能把状态冲回去",
-                "幂等保证：同一 requestNo 只围绕同一条业务记录流转，重复回执不会重复生效",
-                "补偿保证：长时间未终态的数据可以通过定时扫描 / 对账收敛到最终结果"
-        );
+        List<String> guarantees = new ArrayList<>();
+        guarantees.add("本地事务保证：指令单和初始状态落库原子成功或一起失败");
+        guarantees.add("状态机保证：终态一旦写入，迟到的中间态回执不能把状态冲回去");
+        guarantees.add("幂等保证：同一 requestNo 只围绕同一条业务记录流转，重复回执不会重复生效");
+        guarantees.add("补偿保证：长时间未终态的数据可以通过定时扫描 / 对账收敛到最终结果");
 
         return new ProjectStyleDistributedTxResult(requestNo, finalRecord.status(), timeline, guarantees);
     }
@@ -254,13 +253,18 @@ public class StateMachineDemoService {
         if (current.isTerminal()) {
             return false;
         }
-        return switch (current) {
-            case WAIT_RECEIPT -> incoming == InstructionStatus.PROCESSING
-                    || incoming == InstructionStatus.SUCCESS
-                    || incoming == InstructionStatus.FAIL;
-            case PROCESSING -> incoming == InstructionStatus.SUCCESS || incoming == InstructionStatus.FAIL;
-            case SUCCESS, FAIL -> false;
-        };
+        switch (current) {
+            case WAIT_RECEIPT:
+                return incoming == InstructionStatus.PROCESSING
+                        || incoming == InstructionStatus.SUCCESS
+                        || incoming == InstructionStatus.FAIL;
+            case PROCESSING:
+                return incoming == InstructionStatus.SUCCESS || incoming == InstructionStatus.FAIL;
+            case SUCCESS:
+            case FAIL:
+            default:
+                return false;
+        }
     }
 
     public enum InstructionStatus {
@@ -274,18 +278,130 @@ public class StateMachineDemoService {
         }
     }
 
-    public record InstructionRecord(String requestNo, InstructionStatus status, BigDecimal amount, long version, String lastMessage) {
+    public static final class InstructionRecord {
+
+        private final String requestNo;
+        private final InstructionStatus status;
+        private final BigDecimal amount;
+        private final long version;
+        private final String lastMessage;
+
+        public InstructionRecord(String requestNo, InstructionStatus status, BigDecimal amount, long version, String lastMessage) {
+            this.requestNo = requestNo;
+            this.status = status;
+            this.amount = amount;
+            this.version = version;
+            this.lastMessage = lastMessage;
+        }
+
+        public String requestNo() {
+            return requestNo;
+        }
+
+        public InstructionStatus status() {
+            return status;
+        }
+
+        public BigDecimal amount() {
+            return amount;
+        }
+
+        public long version() {
+            return version;
+        }
+
+        public String lastMessage() {
+            return lastMessage;
+        }
     }
 
-    public record ReceiptApplyResult(boolean updated, InstructionStatus finalStatus, String message, String reason) {
+    public static final class ReceiptApplyResult {
+
+        private final boolean updated;
+        private final InstructionStatus finalStatus;
+        private final String message;
+        private final String reason;
+
+        public ReceiptApplyResult(boolean updated, InstructionStatus finalStatus, String message, String reason) {
+            this.updated = updated;
+            this.finalStatus = finalStatus;
+            this.message = message;
+            this.reason = reason;
+        }
+
+        public boolean updated() {
+            return updated;
+        }
+
+        public InstructionStatus finalStatus() {
+            return finalStatus;
+        }
+
+        public String message() {
+            return message;
+        }
+
+        public String reason() {
+            return reason;
+        }
     }
 
-    public record FlexibleDemoResult(String requestNo, InstructionStatus finalStatus, List<String> steps) {
+    public static final class FlexibleDemoResult {
+
+        private final String requestNo;
+        private final InstructionStatus finalStatus;
+        private final List<String> steps;
+
+        public FlexibleDemoResult(String requestNo, InstructionStatus finalStatus, List<String> steps) {
+            this.requestNo = requestNo;
+            this.finalStatus = finalStatus;
+            this.steps = steps;
+        }
+
+        public String requestNo() {
+            return requestNo;
+        }
+
+        public InstructionStatus finalStatus() {
+            return finalStatus;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
     }
 
-    public record ProjectStyleDistributedTxResult(String requestNo,
-                                                  InstructionStatus finalStatus,
-                                                  List<String> timeline,
-                                                  List<String> guarantees) {
+    public static final class ProjectStyleDistributedTxResult {
+
+        private final String requestNo;
+        private final InstructionStatus finalStatus;
+        private final List<String> timeline;
+        private final List<String> guarantees;
+
+        public ProjectStyleDistributedTxResult(String requestNo,
+                                               InstructionStatus finalStatus,
+                                               List<String> timeline,
+                                               List<String> guarantees) {
+            this.requestNo = requestNo;
+            this.finalStatus = finalStatus;
+            this.timeline = timeline;
+            this.guarantees = guarantees;
+        }
+
+        public String requestNo() {
+            return requestNo;
+        }
+
+        public InstructionStatus finalStatus() {
+            return finalStatus;
+        }
+
+        public List<String> timeline() {
+            return timeline;
+        }
+
+        public List<String> guarantees() {
+            return guarantees;
+        }
     }
 }

@@ -7,6 +7,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +23,7 @@ public class ScheduleCenterTriggerDemoService {
 
     public TriggerPlanResult minuteBucketTriggerDemo() {
         LocalDateTime baseTime = LocalDateTime.of(2026, 3, 30, 9, 0, 0);
-        List<TriggerTask> tasks = List.of(
+        List<TriggerTask> tasks = Arrays.asList(
                 new TriggerTask("PLAN-090001", baseTime.plusSeconds(5), "生成日计划"),
                 new TriggerTask("PLAN-090002", baseTime.plusSeconds(17), "预算预校验"),
                 new TriggerTask("PLAN-090003", baseTime.plusSeconds(25), "归集前置检查"),
@@ -83,7 +84,13 @@ public class ScheduleCenterTriggerDemoService {
         return localDateTime.toInstant(ZoneOffset.UTC).toEpochMilli();
     }
 
-    private record BucketIndex(int bucketCount) {
+    private static final class BucketIndex {
+
+        private final int bucketCount;
+
+        private BucketIndex(int bucketCount) {
+            this.bucketCount = bucketCount;
+        }
 
         private String buildMinuteBucketKey(String taskId, LocalDateTime triggerTime) {
             int bucket = Math.floorMod(taskId.hashCode(), bucketCount);
@@ -92,13 +99,55 @@ public class ScheduleCenterTriggerDemoService {
         }
     }
 
-    private record TriggerTask(String taskId, LocalDateTime triggerTime, String scene) {
+    private static final class TriggerTask {
+
+        private final String taskId;
+        private final LocalDateTime triggerTime;
+        private final String scene;
+
+        private TriggerTask(String taskId, LocalDateTime triggerTime, String scene) {
+            this.taskId = taskId;
+            this.triggerTime = triggerTime;
+            this.scene = scene;
+        }
+
+        private String taskId() {
+            return taskId;
+        }
+
+        private LocalDateTime triggerTime() {
+            return triggerTime;
+        }
+
+        private String scene() {
+            return scene;
+        }
     }
 
-    public record TriggerPlanResult(
-            List<String> steps,
-            Map<String, List<String>> bucketTasks,
-            List<String> firedTaskIds
-    ) {
+    public static final class TriggerPlanResult {
+
+        private final List<String> steps;
+        private final Map<String, List<String>> bucketTasks;
+        private final List<String> firedTaskIds;
+
+        public TriggerPlanResult(List<String> steps,
+                                 Map<String, List<String>> bucketTasks,
+                                 List<String> firedTaskIds) {
+            this.steps = steps;
+            this.bucketTasks = bucketTasks;
+            this.firedTaskIds = firedTaskIds;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public Map<String, List<String>> bucketTasks() {
+            return bucketTasks;
+        }
+
+        public List<String> firedTaskIds() {
+            return firedTaskIds;
+        }
     }
 }

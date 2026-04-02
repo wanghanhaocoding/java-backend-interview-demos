@@ -5,8 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,7 +15,7 @@ class LifecycleProbeTest {
     @Test
     void lifecycleCallbacksShouldFollowSpringOrder() {
         SpringApplication application = new SpringApplication(SpringCoreTeachingApplication.class);
-        application.setDefaultProperties(Map.of("teaching.runner.enabled", "false"));
+        application.setDefaultProperties(Collections.<String, Object>singletonMap("teaching.runner.enabled", "false"));
 
         ConfigurableApplicationContext context = application.run("--teaching.runner.enabled=false");
         LifecycleRecorder recorder = context.getBean(LifecycleRecorder.class);

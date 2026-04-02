@@ -2,6 +2,9 @@ package com.example.redislockdemo.concurrency;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ThreadPoolTeachingDemoTest {
@@ -11,8 +14,12 @@ class ThreadPoolTeachingDemoTest {
     @Test
     void commonPoolTypesOverviewContainsPracticalRecommendations() {
         // 这个测试对应“工作里常见线程池怎么选”的总览表。
-        assertThat(threadPoolTeachingDemoService.commonPoolTypesOverview())
-                .extracting(ThreadPoolTeachingDemoService.PoolTypeNote::poolName)
+        List<String> poolNames = threadPoolTeachingDemoService.commonPoolTypesOverview()
+                .stream()
+                .map(ThreadPoolTeachingDemoService.PoolTypeNote::poolName)
+                .collect(Collectors.toList());
+
+        assertThat(poolNames)
                 .contains("fixed-business-pool", "single-thread-executor", "scheduled-thread-pool", "executors-factory-warning");
     }
 

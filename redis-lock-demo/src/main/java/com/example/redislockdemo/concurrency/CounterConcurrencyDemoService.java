@@ -80,11 +80,55 @@ public class CounterConcurrencyDemoService {
         }
     }
 
-    public record CounterDemoResult(String strategy, int threadCount, int incrementsPerThread, int expected, int actual, int lostUpdates) {
+    public static final class CounterDemoResult {
+        private final String strategy;
+        private final int threadCount;
+        private final int incrementsPerThread;
+        private final int expected;
+        private final int actual;
+        private final int lostUpdates;
+
+        public CounterDemoResult(String strategy,
+                                 int threadCount,
+                                 int incrementsPerThread,
+                                 int expected,
+                                 int actual,
+                                 int lostUpdates) {
+            this.strategy = strategy;
+            this.threadCount = threadCount;
+            this.incrementsPerThread = incrementsPerThread;
+            this.expected = expected;
+            this.actual = actual;
+            this.lostUpdates = lostUpdates;
+        }
 
         static CounterDemoResult of(String strategy, int threadCount, int incrementsPerThread, int actual) {
             int expected = threadCount * incrementsPerThread;
             return new CounterDemoResult(strategy, threadCount, incrementsPerThread, expected, actual, expected - actual);
+        }
+
+        public String strategy() {
+            return strategy;
+        }
+
+        public int threadCount() {
+            return threadCount;
+        }
+
+        public int incrementsPerThread() {
+            return incrementsPerThread;
+        }
+
+        public int expected() {
+            return expected;
+        }
+
+        public int actual() {
+            return actual;
+        }
+
+        public int lostUpdates() {
+            return lostUpdates;
         }
     }
 

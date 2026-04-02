@@ -68,11 +68,25 @@ public class AsyncJobCenterRetryShardingDemoService {
         return "t_statement_task_" + tableIndex;
     }
 
-    private record RetryableTask(String taskId,
-                                 String stage,
-                                 TaskStatus status,
-                                 long orderTime,
-                                 int crtRetryNum) {
+    private static final class RetryableTask {
+
+        private final String taskId;
+        private final String stage;
+        private final TaskStatus status;
+        private final long orderTime;
+        private final int crtRetryNum;
+
+        private RetryableTask(String taskId,
+                              String stage,
+                              TaskStatus status,
+                              long orderTime,
+                              int crtRetryNum) {
+            this.taskId = taskId;
+            this.stage = stage;
+            this.status = status;
+            this.orderTime = orderTime;
+            this.crtRetryNum = crtRetryNum;
+        }
 
         private RetryableTask claim() {
             return new RetryableTask(taskId, stage, TaskStatus.PROCESSING, orderTime, crtRetryNum);
@@ -85,6 +99,26 @@ public class AsyncJobCenterRetryShardingDemoService {
         private RetryableTask succeed() {
             return new RetryableTask(taskId, stage, TaskStatus.SUCCESS, orderTime, crtRetryNum);
         }
+
+        private String taskId() {
+            return taskId;
+        }
+
+        private String stage() {
+            return stage;
+        }
+
+        private TaskStatus status() {
+            return status;
+        }
+
+        private long orderTime() {
+            return orderTime;
+        }
+
+        private int crtRetryNum() {
+            return crtRetryNum;
+        }
     }
 
     private enum TaskStatus {
@@ -93,12 +127,44 @@ public class AsyncJobCenterRetryShardingDemoService {
         SUCCESS
     }
 
-    public record RetryShardingResult(
-            List<String> steps,
-            Map<String, List<String>> tableRoutes,
-            List<String> claimOwners,
-            List<Long> retryOrderTimes,
-            String finalStatus
-    ) {
+    public static final class RetryShardingResult {
+
+        private final List<String> steps;
+        private final Map<String, List<String>> tableRoutes;
+        private final List<String> claimOwners;
+        private final List<Long> retryOrderTimes;
+        private final String finalStatus;
+
+        public RetryShardingResult(List<String> steps,
+                                   Map<String, List<String>> tableRoutes,
+                                   List<String> claimOwners,
+                                   List<Long> retryOrderTimes,
+                                   String finalStatus) {
+            this.steps = steps;
+            this.tableRoutes = tableRoutes;
+            this.claimOwners = claimOwners;
+            this.retryOrderTimes = retryOrderTimes;
+            this.finalStatus = finalStatus;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public Map<String, List<String>> tableRoutes() {
+            return tableRoutes;
+        }
+
+        public List<String> claimOwners() {
+            return claimOwners;
+        }
+
+        public List<Long> retryOrderTimes() {
+            return retryOrderTimes;
+        }
+
+        public String finalStatus() {
+            return finalStatus;
+        }
     }
 }

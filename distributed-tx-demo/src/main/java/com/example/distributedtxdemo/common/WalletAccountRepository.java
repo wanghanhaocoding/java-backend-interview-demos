@@ -65,7 +65,35 @@ public class WalletAccountRepository {
         );
     }
 
-    public record WalletAccount(String accountNo, BigDecimal balance, BigDecimal frozenAmount, long version) {
+    public static final class WalletAccount {
+
+        private final String accountNo;
+        private final BigDecimal balance;
+        private final BigDecimal frozenAmount;
+        private final long version;
+
+        public WalletAccount(String accountNo, BigDecimal balance, BigDecimal frozenAmount, long version) {
+            this.accountNo = accountNo;
+            this.balance = balance;
+            this.frozenAmount = frozenAmount;
+            this.version = version;
+        }
+
+        public String accountNo() {
+            return accountNo;
+        }
+
+        public BigDecimal balance() {
+            return balance;
+        }
+
+        public BigDecimal frozenAmount() {
+            return frozenAmount;
+        }
+
+        public long version() {
+            return version;
+        }
 
         public BigDecimal availableAmount() {
             return balance.subtract(frozenAmount);

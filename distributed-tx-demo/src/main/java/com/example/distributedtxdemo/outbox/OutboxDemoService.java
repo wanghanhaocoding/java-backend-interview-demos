@@ -135,15 +135,103 @@ public class OutboxDemoService {
         return "order-created:" + requestNo;
     }
 
-    private record OutboxEvent(long id, String eventKey, String status, int retryCount) {
+    private static final class OutboxEvent {
+
+        private final long id;
+        private final String eventKey;
+        private final String status;
+        private final int retryCount;
+
+        private OutboxEvent(long id, String eventKey, String status, int retryCount) {
+            this.id = id;
+            this.eventKey = eventKey;
+            this.status = status;
+            this.retryCount = retryCount;
+        }
+
+        public long id() {
+            return id;
+        }
+
+        public String eventKey() {
+            return eventKey;
+        }
+
+        public String status() {
+            return status;
+        }
+
+        public int retryCount() {
+            return retryCount;
+        }
     }
 
-    public record DispatchResult(int sent, int failed) {
+    public static final class DispatchResult {
+
+        private final int sent;
+        private final int failed;
+
+        public DispatchResult(int sent, int failed) {
+            this.sent = sent;
+            this.failed = failed;
+        }
+
+        public int sent() {
+            return sent;
+        }
+
+        public int failed() {
+            return failed;
+        }
     }
 
-    public record ConsumeResult(int consumed, int skipped) {
+    public static final class ConsumeResult {
+
+        private final int consumed;
+        private final int skipped;
+
+        public ConsumeResult(int consumed, int skipped) {
+            this.consumed = consumed;
+            this.skipped = skipped;
+        }
+
+        public int consumed() {
+            return consumed;
+        }
+
+        public int skipped() {
+            return skipped;
+        }
     }
 
-    public record OutboxFlowResult(String requestNo, int orderRows, String finalEventStatus, List<String> steps) {
+    public static final class OutboxFlowResult {
+
+        private final String requestNo;
+        private final int orderRows;
+        private final String finalEventStatus;
+        private final List<String> steps;
+
+        public OutboxFlowResult(String requestNo, int orderRows, String finalEventStatus, List<String> steps) {
+            this.requestNo = requestNo;
+            this.orderRows = orderRows;
+            this.finalEventStatus = finalEventStatus;
+            this.steps = steps;
+        }
+
+        public String requestNo() {
+            return requestNo;
+        }
+
+        public int orderRows() {
+            return orderRows;
+        }
+
+        public String finalEventStatus() {
+            return finalEventStatus;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
     }
 }

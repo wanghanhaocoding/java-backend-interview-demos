@@ -15,7 +15,7 @@ public class ProxyInvocationRecorder {
     }
 
     public List<String> snapshot() {
-        return List.copyOf(events);
+        return new ArrayList<>(events);
     }
 
     public void clear() {

@@ -6,6 +6,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Component
@@ -37,7 +38,7 @@ public class DemoRunner implements CommandLineRunner {
         printTitle("2. 认证授权");
         AuthDemoService.LoginResult loginResult = authDemoService.loginAndAuthorizeDemo(
                 "alice",
-                Set.of("OPS", "ORDER_ADMIN")
+                linkedRoles("OPS", "ORDER_ADMIN")
         );
         loginResult.steps().forEach(System.out::println);
     }
@@ -45,5 +46,11 @@ public class DemoRunner implements CommandLineRunner {
     private void printTitle(String title) {
         System.out.println();
         System.out.println("=== " + title + " ===");
+    }
+
+    private Set<String> linkedRoles(String... roles) {
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        java.util.Collections.addAll(result, roles);
+        return result;
     }
 }

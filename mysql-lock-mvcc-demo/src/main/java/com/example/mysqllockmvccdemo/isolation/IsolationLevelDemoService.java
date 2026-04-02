@@ -45,19 +45,69 @@ public class IsolationLevelDemoService {
         return new PhantomReadResult(steps, matchingRowsAtStart, matchingRowsAfterInsert);
     }
 
-    public record NonRepeatableReadResult(
-            List<String> steps,
-            int readCommittedFirstRead,
-            int readCommittedSecondRead,
-            int repeatableReadFirstRead,
-            int repeatableReadSecondRead
-    ) {
+    public static final class NonRepeatableReadResult {
+
+        private final List<String> steps;
+        private final int readCommittedFirstRead;
+        private final int readCommittedSecondRead;
+        private final int repeatableReadFirstRead;
+        private final int repeatableReadSecondRead;
+
+        public NonRepeatableReadResult(List<String> steps,
+                                       int readCommittedFirstRead,
+                                       int readCommittedSecondRead,
+                                       int repeatableReadFirstRead,
+                                       int repeatableReadSecondRead) {
+            this.steps = steps;
+            this.readCommittedFirstRead = readCommittedFirstRead;
+            this.readCommittedSecondRead = readCommittedSecondRead;
+            this.repeatableReadFirstRead = repeatableReadFirstRead;
+            this.repeatableReadSecondRead = repeatableReadSecondRead;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public int readCommittedFirstRead() {
+            return readCommittedFirstRead;
+        }
+
+        public int readCommittedSecondRead() {
+            return readCommittedSecondRead;
+        }
+
+        public int repeatableReadFirstRead() {
+            return repeatableReadFirstRead;
+        }
+
+        public int repeatableReadSecondRead() {
+            return repeatableReadSecondRead;
+        }
     }
 
-    public record PhantomReadResult(
-            List<String> steps,
-            int initialMatchingRows,
-            int matchingRowsAfterInsert
-    ) {
+    public static final class PhantomReadResult {
+
+        private final List<String> steps;
+        private final int initialMatchingRows;
+        private final int matchingRowsAfterInsert;
+
+        public PhantomReadResult(List<String> steps, int initialMatchingRows, int matchingRowsAfterInsert) {
+            this.steps = steps;
+            this.initialMatchingRows = initialMatchingRows;
+            this.matchingRowsAfterInsert = matchingRowsAfterInsert;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public int initialMatchingRows() {
+            return initialMatchingRows;
+        }
+
+        public int matchingRowsAfterInsert() {
+            return matchingRowsAfterInsert;
+        }
     }
 }

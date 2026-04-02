@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +20,7 @@ public class ScheduleCenterScalingDemoService {
         Map<Integer, String> bucketClaims = new LinkedHashMap<>();
         Map<String, List<String>> workerExecutions = new LinkedHashMap<>();
 
-        List<ScheduledWork> works = List.of(
+        List<ScheduledWork> works = Arrays.asList(
                 new ScheduledWork("COLLECT-1001", 0),
                 new ScheduledWork("COLLECT-1002", 0),
                 new ScheduledWork("COLLECT-1003", 0),
@@ -76,13 +77,49 @@ public class ScheduleCenterScalingDemoService {
                 + "，当前本地队列剩余 " + localQueue.size());
     }
 
-    private record ScheduledWork(String taskId, int bucketId) {
+    private static final class ScheduledWork {
+
+        private final String taskId;
+        private final int bucketId;
+
+        private ScheduledWork(String taskId, int bucketId) {
+            this.taskId = taskId;
+            this.bucketId = bucketId;
+        }
+
+        private String taskId() {
+            return taskId;
+        }
+
+        private int bucketId() {
+            return bucketId;
+        }
     }
 
-    public record ScalingResult(
-            List<String> steps,
-            Map<Integer, String> bucketClaims,
-            Map<String, List<String>> workerExecutions
-    ) {
+    public static final class ScalingResult {
+
+        private final List<String> steps;
+        private final Map<Integer, String> bucketClaims;
+        private final Map<String, List<String>> workerExecutions;
+
+        public ScalingResult(List<String> steps,
+                             Map<Integer, String> bucketClaims,
+                             Map<String, List<String>> workerExecutions) {
+            this.steps = steps;
+            this.bucketClaims = bucketClaims;
+            this.workerExecutions = workerExecutions;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public Map<Integer, String> bucketClaims() {
+            return bucketClaims;
+        }
+
+        public Map<String, List<String>> workerExecutions() {
+            return workerExecutions;
+        }
     }
 }

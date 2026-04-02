@@ -116,7 +116,7 @@ public class OrderSubmitIdempotencyDemoService {
         if (!failures.isEmpty()) {
             throw new IllegalStateException("Order submit demo execution failed", failures.get(0));
         }
-        return List.copyOf(outcomes);
+        return Collections.unmodifiableList(new ArrayList<AttemptOutcome>(outcomes));
     }
 
     private SubmitDemoResult summarize(String strategy,
@@ -135,9 +135,17 @@ public class OrderSubmitIdempotencyDemoService {
                 observedOrderNos.add(outcome.order().orderNo());
             }
             switch (outcome.status()) {
-                case CREATED -> createdResponses++;
-                case REPLAYED -> replayedResponses++;
-                case PROCESSING -> processingResponses++;
+                case CREATED:
+                    createdResponses++;
+                    break;
+                case REPLAYED:
+                    replayedResponses++;
+                    break;
+                case PROCESSING:
+                    processingResponses++;
+                    break;
+                default:
+                    throw new IllegalStateException("Unexpected attempt status: " + outcome.status());
             }
         }
 
@@ -150,8 +158,8 @@ public class OrderSubmitIdempotencyDemoService {
                 createdResponses,
                 replayedResponses,
                 processingResponses,
-                List.copyOf(storedOrders),
-                Set.copyOf(observedOrderNos)
+                Collections.unmodifiableList(new ArrayList<OrderRecord>(storedOrders)),
+                Collections.unmodifiableSet(new LinkedHashSet<String>(observedOrderNos))
         );
     }
 
@@ -185,22 +193,119 @@ public class OrderSubmitIdempotencyDemoService {
         }
     }
 
-    public record SubmitDemoResult(String strategy,
-                                   String requestNo,
-                                   long userId,
-                                   int threadCount,
-                                   int ordersCreated,
-                                   int createdResponses,
-                                   int replayedResponses,
-                                   int processingResponses,
-                                   List<OrderRecord> storedOrders,
-                                   Set<String> observedOrderNos) {
+    public static final class SubmitDemoResult {
+        private final String strategy;
+        private final String requestNo;
+        private final long userId;
+        private final int threadCount;
+        private final int ordersCreated;
+        private final int createdResponses;
+        private final int replayedResponses;
+        private final int processingResponses;
+        private final List<OrderRecord> storedOrders;
+        private final Set<String> observedOrderNos;
+
+        public SubmitDemoResult(String strategy,
+                                String requestNo,
+                                long userId,
+                                int threadCount,
+                                int ordersCreated,
+                                int createdResponses,
+                                int replayedResponses,
+                                int processingResponses,
+                                List<OrderRecord> storedOrders,
+                                Set<String> observedOrderNos) {
+            this.strategy = strategy;
+            this.requestNo = requestNo;
+            this.userId = userId;
+            this.threadCount = threadCount;
+            this.ordersCreated = ordersCreated;
+            this.createdResponses = createdResponses;
+            this.replayedResponses = replayedResponses;
+            this.processingResponses = processingResponses;
+            this.storedOrders = storedOrders;
+            this.observedOrderNos = observedOrderNos;
+        }
+
+        public String strategy() {
+            return strategy;
+        }
+
+        public String requestNo() {
+            return requestNo;
+        }
+
+        public long userId() {
+            return userId;
+        }
+
+        public int threadCount() {
+            return threadCount;
+        }
+
+        public int ordersCreated() {
+            return ordersCreated;
+        }
+
+        public int createdResponses() {
+            return createdResponses;
+        }
+
+        public int replayedResponses() {
+            return replayedResponses;
+        }
+
+        public int processingResponses() {
+            return processingResponses;
+        }
+
+        public List<OrderRecord> storedOrders() {
+            return storedOrders;
+        }
+
+        public Set<String> observedOrderNos() {
+            return observedOrderNos;
+        }
     }
 
-    public record OrderRecord(long id, String orderNo, long userId, String requestNo) {
+    public static final class OrderRecord {
+        private final long id;
+        private final String orderNo;
+        private final long userId;
+        private final String requestNo;
+
+        public OrderRecord(long id, String orderNo, long userId, String requestNo) {
+            this.id = id;
+            this.orderNo = orderNo;
+            this.userId = userId;
+            this.requestNo = requestNo;
+        }
+
+        public long id() {
+            return id;
+        }
+
+        public String orderNo() {
+            return orderNo;
+        }
+
+        public long userId() {
+            return userId;
+        }
+
+        public String requestNo() {
+            return requestNo;
+        }
     }
 
-    private record AttemptOutcome(AttemptStatus status, OrderRecord order) {
+    private static final class AttemptOutcome {
+        private final AttemptStatus status;
+        private final OrderRecord order;
+
+        private AttemptOutcome(AttemptStatus status, OrderRecord order) {
+            this.status = status;
+            this.order = order;
+        }
 
         static AttemptOutcome created(OrderRecord order) {
             return new AttemptOutcome(AttemptStatus.CREATED, order);
@@ -212,6 +317,14 @@ public class OrderSubmitIdempotencyDemoService {
 
         static AttemptOutcome processing() {
             return new AttemptOutcome(AttemptStatus.PROCESSING, null);
+        }
+
+        private AttemptStatus status() {
+            return status;
+        }
+
+        private OrderRecord order() {
+            return order;
         }
     }
 

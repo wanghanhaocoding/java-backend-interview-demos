@@ -3,10 +3,12 @@ package com.example.treasuryplancollectiondemo.plan;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class TreasuryPlanCollectionDemoService {
@@ -18,7 +20,7 @@ public class TreasuryPlanCollectionDemoService {
         budgetByCorp.put("G2", 700);
         budgetByCorp.put("G3", 300);
 
-        List<DailyPlan> planRequests = List.of(
+        List<DailyPlan> planRequests = Arrays.asList(
                 new DailyPlan("PLAN-1001", "G1", 300, 90, 110, "09:00", 0),
                 new DailyPlan("PLAN-1002", "G2", 450, 95, 120, "09:00", 1),
                 new DailyPlan("PLAN-1003", "G3", 260, 90, 90, "09:00", 0),
@@ -69,28 +71,106 @@ public class TreasuryPlanCollectionDemoService {
 
         return new PlanCollectionResult(
                 steps,
-                acceptedPlans.stream().map(DailyPlan::planId).toList(),
+                acceptedPlans.stream().map(DailyPlan::planId).collect(Collectors.toList()),
                 rejectedPlanReasons,
                 windowAssignments,
                 executionOrder
         );
     }
 
-    private record DailyPlan(String planId,
-                             String corpCode,
-                             int amount,
-                             int priority,
-                             long orderTime,
-                             String fixedWindow,
-                             int shardId) {
+    private static final class DailyPlan {
+
+        private final String planId;
+        private final String corpCode;
+        private final int amount;
+        private final int priority;
+        private final long orderTime;
+        private final String fixedWindow;
+        private final int shardId;
+
+        private DailyPlan(String planId,
+                          String corpCode,
+                          int amount,
+                          int priority,
+                          long orderTime,
+                          String fixedWindow,
+                          int shardId) {
+            this.planId = planId;
+            this.corpCode = corpCode;
+            this.amount = amount;
+            this.priority = priority;
+            this.orderTime = orderTime;
+            this.fixedWindow = fixedWindow;
+            this.shardId = shardId;
+        }
+
+        private String planId() {
+            return planId;
+        }
+
+        private String corpCode() {
+            return corpCode;
+        }
+
+        private int amount() {
+            return amount;
+        }
+
+        private int priority() {
+            return priority;
+        }
+
+        private long orderTime() {
+            return orderTime;
+        }
+
+        private String fixedWindow() {
+            return fixedWindow;
+        }
+
+        private int shardId() {
+            return shardId;
+        }
     }
 
-    public record PlanCollectionResult(
-            List<String> steps,
-            List<String> acceptedPlanIds,
-            Map<String, String> rejectedPlanReasons,
-            Map<String, List<String>> windowAssignments,
-            List<String> executionOrder
-    ) {
+    public static final class PlanCollectionResult {
+
+        private final List<String> steps;
+        private final List<String> acceptedPlanIds;
+        private final Map<String, String> rejectedPlanReasons;
+        private final Map<String, List<String>> windowAssignments;
+        private final List<String> executionOrder;
+
+        public PlanCollectionResult(List<String> steps,
+                                    List<String> acceptedPlanIds,
+                                    Map<String, String> rejectedPlanReasons,
+                                    Map<String, List<String>> windowAssignments,
+                                    List<String> executionOrder) {
+            this.steps = steps;
+            this.acceptedPlanIds = acceptedPlanIds;
+            this.rejectedPlanReasons = rejectedPlanReasons;
+            this.windowAssignments = windowAssignments;
+            this.executionOrder = executionOrder;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public List<String> acceptedPlanIds() {
+            return acceptedPlanIds;
+        }
+
+        public Map<String, String> rejectedPlanReasons() {
+            return rejectedPlanReasons;
+        }
+
+        public Map<String, List<String>> windowAssignments() {
+            return windowAssignments;
+        }
+
+        public List<String> executionOrder() {
+            return executionOrder;
+        }
     }
 }

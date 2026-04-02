@@ -4,6 +4,7 @@ import com.example.orderobservabilitypatterndemo.observability.ObservabilityDemo
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -139,46 +140,142 @@ public class TreasuryFlowDemoService {
     }
 
     private List<TreasuryValidator> validators() {
-        return List.of(new PositiveAmountValidator(), new BudgetQuotaValidator());
+        List<TreasuryValidator> validators = new ArrayList<>();
+        validators.add(new PositiveAmountValidator());
+        validators.add(new BudgetQuotaValidator());
+        return validators;
     }
 
     private Map<String, DispatchStrategy> strategies() {
-        return Map.of(
-                "DIRECT_BANK", new DirectBankDispatchStrategy(),
-                "HOST_TO_HOST", new HostToHostDispatchStrategy(),
-                "DIRECT_BANK_FAIL", new FailBankDispatchStrategy()
-        );
+        Map<String, DispatchStrategy> strategies = new LinkedHashMap<>();
+        strategies.put("DIRECT_BANK", new DirectBankDispatchStrategy());
+        strategies.put("HOST_TO_HOST", new HostToHostDispatchStrategy());
+        strategies.put("DIRECT_BANK_FAIL", new FailBankDispatchStrategy());
+        return strategies;
     }
 
-    public record TreasuryFlowResult(
-            String traceId,
-            String finalStatus,
-            String strategyName,
-            String templateName,
-            List<String> validatorNames,
-            List<String> steps,
-            List<String> compensationSteps
-    ) {
+    public static final class TreasuryFlowResult {
+
+        private final String traceId;
+        private final String finalStatus;
+        private final String strategyName;
+        private final String templateName;
+        private final List<String> validatorNames;
+        private final List<String> steps;
+        private final List<String> compensationSteps;
+
+        public TreasuryFlowResult(String traceId,
+                                  String finalStatus,
+                                  String strategyName,
+                                  String templateName,
+                                  List<String> validatorNames,
+                                  List<String> steps,
+                                  List<String> compensationSteps) {
+            this.traceId = traceId;
+            this.finalStatus = finalStatus;
+            this.strategyName = strategyName;
+            this.templateName = templateName;
+            this.validatorNames = validatorNames;
+            this.steps = steps;
+            this.compensationSteps = compensationSteps;
+        }
+
+        public String traceId() {
+            return traceId;
+        }
+
+        public String finalStatus() {
+            return finalStatus;
+        }
+
+        public String strategyName() {
+            return strategyName;
+        }
+
+        public String templateName() {
+            return templateName;
+        }
+
+        public List<String> validatorNames() {
+            return validatorNames;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public List<String> compensationSteps() {
+            return compensationSteps;
+        }
     }
 
-    private record TreasuryRequest(
-            String instructionId,
-            String dispatchChannel,
-            int amount,
-            int availableQuota
-    ) {
+    private static final class TreasuryRequest {
+
+        private final String instructionId;
+        private final String dispatchChannel;
+        private final int amount;
+        private final int availableQuota;
+
+        private TreasuryRequest(String instructionId, String dispatchChannel, int amount, int availableQuota) {
+            this.instructionId = instructionId;
+            this.dispatchChannel = dispatchChannel;
+            this.amount = amount;
+            this.availableQuota = availableQuota;
+        }
+
+        public String instructionId() {
+            return instructionId;
+        }
+
+        public String dispatchChannel() {
+            return dispatchChannel;
+        }
+
+        public int amount() {
+            return amount;
+        }
+
+        public int availableQuota() {
+            return availableQuota;
+        }
     }
 
-    private record ValidationSummary(
-            boolean passed,
-            List<String> validatorNames
-    ) {
+    private static final class ValidationSummary {
+
+        private final boolean passed;
+        private final List<String> validatorNames;
+
+        private ValidationSummary(boolean passed, List<String> validatorNames) {
+            this.passed = passed;
+            this.validatorNames = validatorNames;
+        }
+
+        public boolean passed() {
+            return passed;
+        }
+
+        public List<String> validatorNames() {
+            return validatorNames;
+        }
     }
 
-    private record DispatchSummary(
-            boolean success,
-            String strategyName
-    ) {
+    private static final class DispatchSummary {
+
+        private final boolean success;
+        private final String strategyName;
+
+        private DispatchSummary(boolean success, String strategyName) {
+            this.success = success;
+            this.strategyName = strategyName;
+        }
+
+        public boolean success() {
+            return success;
+        }
+
+        public String strategyName() {
+            return strategyName;
+        }
     }
 
     private interface TreasuryValidator {
@@ -187,10 +284,23 @@ public class TreasuryFlowDemoService {
         String name();
     }
 
-    private record ValidationResult(
-            boolean passed,
-            String message
-    ) {
+    private static final class ValidationResult {
+
+        private final boolean passed;
+        private final String message;
+
+        private ValidationResult(boolean passed, String message) {
+            this.passed = passed;
+            this.message = message;
+        }
+
+        public boolean passed() {
+            return passed;
+        }
+
+        public String message() {
+            return message;
+        }
     }
 
     private interface DispatchStrategy {
@@ -199,10 +309,23 @@ public class TreasuryFlowDemoService {
         String name();
     }
 
-    private record DispatchResult(
-            boolean success,
-            String status
-    ) {
+    private static final class DispatchResult {
+
+        private final boolean success;
+        private final String status;
+
+        private DispatchResult(boolean success, String status) {
+            this.success = success;
+            this.status = status;
+        }
+
+        public boolean success() {
+            return success;
+        }
+
+        public String status() {
+            return status;
+        }
     }
 
     private static final class PositiveAmountValidator implements TreasuryValidator {

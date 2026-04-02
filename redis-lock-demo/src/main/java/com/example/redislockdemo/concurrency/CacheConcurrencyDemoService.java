@@ -107,10 +107,54 @@ public class CacheConcurrencyDemoService {
         return key + "-value-call-" + callNo;
     }
 
-    public record CacheDemoResult(String strategy, String key, int threadCount, int loaderCalls, int distinctCreatedValues, String finalValue) {
+    public static final class CacheDemoResult {
+        private final String strategy;
+        private final String key;
+        private final int threadCount;
+        private final int loaderCalls;
+        private final int distinctCreatedValues;
+        private final String finalValue;
+
+        public CacheDemoResult(String strategy,
+                               String key,
+                               int threadCount,
+                               int loaderCalls,
+                               int distinctCreatedValues,
+                               String finalValue) {
+            this.strategy = strategy;
+            this.key = key;
+            this.threadCount = threadCount;
+            this.loaderCalls = loaderCalls;
+            this.distinctCreatedValues = distinctCreatedValues;
+            this.finalValue = finalValue;
+        }
 
         static CacheDemoResult of(String strategy, String key, int threadCount, int loaderCalls, int distinctCreatedValues, String finalValue) {
             return new CacheDemoResult(strategy, key, threadCount, loaderCalls, distinctCreatedValues, finalValue);
+        }
+
+        public String strategy() {
+            return strategy;
+        }
+
+        public String key() {
+            return key;
+        }
+
+        public int threadCount() {
+            return threadCount;
+        }
+
+        public int loaderCalls() {
+            return loaderCalls;
+        }
+
+        public int distinctCreatedValues() {
+            return distinctCreatedValues;
+        }
+
+        public String finalValue() {
+            return finalValue;
         }
     }
 

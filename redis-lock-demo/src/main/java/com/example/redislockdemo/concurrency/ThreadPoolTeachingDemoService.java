@@ -3,6 +3,8 @@ package com.example.redislockdemo.concurrency;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -17,7 +19,7 @@ public class ThreadPoolTeachingDemoService {
 
     // 先给出“项目里常见怎么选”的全景图，再往下看具体行为实验。
     public List<PoolTypeNote> commonPoolTypesOverview() {
-        return List.of(
+        return Arrays.asList(
                 new PoolTypeNote("fixed-business-pool", "接口聚合、批量异步处理", "显式 new ThreadPoolExecutor + 有界队列", "生产里更常见的默认选择"),
                 new PoolTypeNote("single-thread-executor", "严格顺序执行的本地任务", "单线程池", "适合串行消费，但也要关注队列堆积"),
                 new PoolTypeNote("scheduled-thread-pool", "延迟任务、定时任务", "ScheduledExecutorService", "适合定时调度，不适合替代通用业务池"),
@@ -26,17 +28,21 @@ public class ThreadPoolTeachingDemoService {
     }
 
     public TaskFlowDemoResult taskFlowAndAbortPolicyDemo() throws InterruptedException {
+        int corePoolSize = 2;
+        int maxPoolSize = 4;
+        int queueCapacity = 2;
+        int submittedTasks = 7;
         AtomicInteger threadIndex = new AtomicInteger();
         CountDownLatch release = new CountDownLatch(1);
-        // 参数故意压小，这样一次提交 7 个任务时能稳定看到 core -> queue -> max -> reject。
+        // 模拟“银行回执/异步回调消费池”在瞬时洪峰下被打满的场景。
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                2,
-                4,
+                corePoolSize,
+                maxPoolSize,
                 30,
                 TimeUnit.SECONDS,
-                // 有界队列更符合生产里的容量控制思路。
-                new ArrayBlockingQueue<>(2),
-                namedThreadFactory("teaching-pool", threadIndex),
+                // 生产里更常见的是有界队列：先限流，再暴露过载，而不是无限堆任务。
+                new ArrayBlockingQueue<>(queueCapacity),
+                namedThreadFactory("receipt-callback-worker", threadIndex),
                 new ThreadPoolExecutor.AbortPolicy()
         );
 
@@ -47,11 +53,14 @@ public class ThreadPoolTeachingDemoService {
         List<String> executingThreads = new ArrayList<>();
 
         try {
-            for (int i = 1; i <= 7; i++) {
+            for (int i = 1; i <= submittedTasks; i++) {
                 int taskNo = i;
+                String taskName = "receipt-callback-batch-" + (taskNo < 10 ? "0" + taskNo : taskNo);
+                int poolSizeBefore = executor.getPoolSize();
+                int queueSizeBefore = executor.getQueue().size();
                 try {
                     executor.execute(() -> {
-                        // 任务先阻塞住，避免前面的任务太快执行完，导致观测不到扩容和排队过程。
+                        // 故意让任务慢一点，模拟第三方回调处理变慢，方便观察池子如何扩容和排队。
                         startedTasks.incrementAndGet();
                         synchronized (executingThreads) {
                             executingThreads.add(Thread.currentThread().getName());
@@ -62,16 +71,20 @@ public class ThreadPoolTeachingDemoService {
                             Thread.currentThread().interrupt();
                         }
                     });
-                    // 每次提交后立刻抓一份现场，用来回放线程池状态变化。
-                    int queueSize = executor.getQueue().size();
-                    queuedPeak.updateAndGet(current -> Math.max(current, queueSize));
-                    submissionFlow.add("task-" + taskNo + " accepted, poolSize=" + executor.getPoolSize()
+                    int poolSizeAfter = executor.getPoolSize();
+                    int queueSizeAfter = executor.getQueue().size();
+                    queuedPeak.updateAndGet(current -> Math.max(current, queueSizeAfter));
+                    submissionFlow.add(taskName + " accepted, route="
+                            + detectSubmissionRoute(corePoolSize, queueCapacity, poolSizeBefore, poolSizeAfter, queueSizeBefore, queueSizeAfter)
+                            + ", poolSize=" + poolSizeAfter
                             + ", active=" + executor.getActiveCount()
-                            + ", queue=" + queueSize);
+                            + ", queue=" + queueSizeAfter);
                 } catch (RejectedExecutionException ex) {
                     // AbortPolicy 的特点就是快速失败，便于上游立即感知“池子已经满了”。
                     rejectedTasks.incrementAndGet();
-                    submissionFlow.add("task-" + taskNo + " rejected");
+                    submissionFlow.add(taskName + " rejected, route=abort-policy, poolSize=" + executor.getPoolSize()
+                            + ", active=" + executor.getActiveCount()
+                            + ", queue=" + executor.getQueue().size());
                 }
             }
         } finally {
@@ -80,17 +93,35 @@ public class ThreadPoolTeachingDemoService {
         }
 
         return new TaskFlowDemoResult(
-                2,
-                4,
-                2,
-                7,
+                corePoolSize,
+                maxPoolSize,
+                queueCapacity,
+                submittedTasks,
                 startedTasks.get(),
                 queuedPeak.get(),
                 executor.getLargestPoolSize(),
                 rejectedTasks.get(),
                 submissionFlow,
-                List.copyOf(executingThreads)
+                immutableListCopy(executingThreads)
         );
+    }
+
+    private String detectSubmissionRoute(int corePoolSize,
+                                         int queueCapacity,
+                                         int poolSizeBefore,
+                                         int poolSizeAfter,
+                                         int queueSizeBefore,
+                                         int queueSizeAfter) {
+        if (poolSizeBefore < corePoolSize && poolSizeAfter > poolSizeBefore) {
+            return "core-thread";
+        }
+        if (queueSizeBefore < queueCapacity && queueSizeAfter > queueSizeBefore) {
+            return "queue";
+        }
+        if (poolSizeAfter > poolSizeBefore) {
+            return "max-thread";
+        }
+        return "accepted";
     }
 
     public CallerRunsDemoResult callerRunsPolicyDemo() throws InterruptedException {
@@ -134,7 +165,7 @@ public class ThreadPoolTeachingDemoService {
             shutdownGracefully(executor);
         }
 
-        return new CallerRunsDemoResult(callerRunsCount.get(), List.copyOf(executionThreads));
+        return new CallerRunsDemoResult(callerRunsCount.get(), immutableListCopy(executionThreads));
     }
 
     public ShutdownDemoResult shutdownLifecycleDemo() throws InterruptedException {
@@ -214,29 +245,177 @@ public class ThreadPoolTeachingDemoService {
         }
     }
 
-    public record PoolTypeNote(String poolName, String useCase, String creationStyle, String note) {
+    private List<String> immutableListCopy(List<String> source) {
+        return Collections.unmodifiableList(new ArrayList<String>(source));
     }
 
-    public record TaskFlowDemoResult(int corePoolSize,
-                                     int maxPoolSize,
-                                     int queueCapacity,
-                                     int submittedTasks,
-                                     int startedTasks,
-                                     int queuedPeak,
-                                     int largestPoolSize,
-                                     int rejectedTasks,
-                                     List<String> submissionFlow,
-                                     List<String> executingThreads) {
+    public static final class PoolTypeNote {
+        private final String poolName;
+        private final String useCase;
+        private final String creationStyle;
+        private final String note;
+
+        public PoolTypeNote(String poolName, String useCase, String creationStyle, String note) {
+            this.poolName = poolName;
+            this.useCase = useCase;
+            this.creationStyle = creationStyle;
+            this.note = note;
+        }
+
+        public String poolName() {
+            return poolName;
+        }
+
+        public String useCase() {
+            return useCase;
+        }
+
+        public String creationStyle() {
+            return creationStyle;
+        }
+
+        public String note() {
+            return note;
+        }
     }
 
-    public record CallerRunsDemoResult(int callerRunsCount, List<String> executionThreads) {
+    public static final class TaskFlowDemoResult {
+        private final int corePoolSize;
+        private final int maxPoolSize;
+        private final int queueCapacity;
+        private final int submittedTasks;
+        private final int startedTasks;
+        private final int queuedPeak;
+        private final int largestPoolSize;
+        private final int rejectedTasks;
+        private final List<String> submissionFlow;
+        private final List<String> executingThreads;
+
+        public TaskFlowDemoResult(int corePoolSize,
+                                  int maxPoolSize,
+                                  int queueCapacity,
+                                  int submittedTasks,
+                                  int startedTasks,
+                                  int queuedPeak,
+                                  int largestPoolSize,
+                                  int rejectedTasks,
+                                  List<String> submissionFlow,
+                                  List<String> executingThreads) {
+            this.corePoolSize = corePoolSize;
+            this.maxPoolSize = maxPoolSize;
+            this.queueCapacity = queueCapacity;
+            this.submittedTasks = submittedTasks;
+            this.startedTasks = startedTasks;
+            this.queuedPeak = queuedPeak;
+            this.largestPoolSize = largestPoolSize;
+            this.rejectedTasks = rejectedTasks;
+            this.submissionFlow = submissionFlow;
+            this.executingThreads = executingThreads;
+        }
+
+        public int corePoolSize() {
+            return corePoolSize;
+        }
+
+        public int maxPoolSize() {
+            return maxPoolSize;
+        }
+
+        public int queueCapacity() {
+            return queueCapacity;
+        }
+
+        public int submittedTasks() {
+            return submittedTasks;
+        }
+
+        public int startedTasks() {
+            return startedTasks;
+        }
+
+        public int queuedPeak() {
+            return queuedPeak;
+        }
+
+        public int largestPoolSize() {
+            return largestPoolSize;
+        }
+
+        public int rejectedTasks() {
+            return rejectedTasks;
+        }
+
+        public List<String> submissionFlow() {
+            return submissionFlow;
+        }
+
+        public List<String> executingThreads() {
+            return executingThreads;
+        }
     }
 
-    public record ShutdownDemoResult(boolean shutdownCalled,
-                                     boolean rejectedAfterShutdown,
-                                     boolean terminatedGracefully,
-                                     int neverStartedTasks,
-                                     int interruptedTasks,
-                                     boolean terminatedFinally) {
+    public static final class CallerRunsDemoResult {
+        private final int callerRunsCount;
+        private final List<String> executionThreads;
+
+        public CallerRunsDemoResult(int callerRunsCount, List<String> executionThreads) {
+            this.callerRunsCount = callerRunsCount;
+            this.executionThreads = executionThreads;
+        }
+
+        public int callerRunsCount() {
+            return callerRunsCount;
+        }
+
+        public List<String> executionThreads() {
+            return executionThreads;
+        }
+    }
+
+    public static final class ShutdownDemoResult {
+        private final boolean shutdownCalled;
+        private final boolean rejectedAfterShutdown;
+        private final boolean terminatedGracefully;
+        private final int neverStartedTasks;
+        private final int interruptedTasks;
+        private final boolean terminatedFinally;
+
+        public ShutdownDemoResult(boolean shutdownCalled,
+                                  boolean rejectedAfterShutdown,
+                                  boolean terminatedGracefully,
+                                  int neverStartedTasks,
+                                  int interruptedTasks,
+                                  boolean terminatedFinally) {
+            this.shutdownCalled = shutdownCalled;
+            this.rejectedAfterShutdown = rejectedAfterShutdown;
+            this.terminatedGracefully = terminatedGracefully;
+            this.neverStartedTasks = neverStartedTasks;
+            this.interruptedTasks = interruptedTasks;
+            this.terminatedFinally = terminatedFinally;
+        }
+
+        public boolean shutdownCalled() {
+            return shutdownCalled;
+        }
+
+        public boolean rejectedAfterShutdown() {
+            return rejectedAfterShutdown;
+        }
+
+        public boolean terminatedGracefully() {
+            return terminatedGracefully;
+        }
+
+        public int neverStartedTasks() {
+            return neverStartedTasks;
+        }
+
+        public int interruptedTasks() {
+            return interruptedTasks;
+        }
+
+        public boolean terminatedFinally() {
+            return terminatedFinally;
+        }
     }
 }

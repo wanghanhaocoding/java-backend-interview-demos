@@ -9,6 +9,7 @@ import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,11 +23,7 @@ public class AuthDemoService {
 
     private final Map<String, SessionRecord> sessionStore = new LinkedHashMap<>();
     private final Set<String> tokenBlacklist = new LinkedHashSet<>();
-    private final Map<String, Set<String>> rolePermissions = Map.of(
-            "OPS", Set.of("ORDER_READ", "AUDIT_READ"),
-            "ORDER_ADMIN", Set.of("ORDER_READ", "ORDER_WRITE", "ORDER_CANCEL"),
-            "FINANCE", Set.of("PAYMENT_REFUND", "AUDIT_READ")
-    );
+    private final Map<String, Set<String>> rolePermissions = createRolePermissions();
 
     public void reset() {
         sessionStore.clear();
@@ -84,13 +81,13 @@ public class AuthDemoService {
             parsed.put(kv[0], kv[1]);
         }
 
-        Set<String> roles = Set.of(parsed.get("roles").split(","));
+        Set<String> roles = parseRoles(parsed.get("roles"));
         return new TokenClaims(parsed.get("sub"), roles, Long.parseLong(parsed.get("exp")));
     }
 
     public boolean hasPermission(Set<String> roles, String permission) {
         return roles.stream()
-                .flatMap(role -> rolePermissions.getOrDefault(role, Set.of()).stream())
+                .flatMap(role -> rolePermissions.getOrDefault(role, Collections.<String>emptySet()).stream())
                 .anyMatch(permission::equals);
     }
 
@@ -138,22 +135,103 @@ public class AuthDemoService {
         }
     }
 
-    public record LoginResult(
-            List<String> steps,
-            String sessionId,
-            String token,
-            boolean canWriteOrder,
-            boolean validAfterBlacklist
-    ) {
+    private Map<String, Set<String>> createRolePermissions() {
+        Map<String, Set<String>> permissions = new LinkedHashMap<>();
+        permissions.put("OPS", linkedSetOf("ORDER_READ", "AUDIT_READ"));
+        permissions.put("ORDER_ADMIN", linkedSetOf("ORDER_READ", "ORDER_WRITE", "ORDER_CANCEL"));
+        permissions.put("FINANCE", linkedSetOf("PAYMENT_REFUND", "AUDIT_READ"));
+        return permissions;
     }
 
-    public record TokenClaims(
-            String subject,
-            Set<String> roles,
-            long expiresAtEpochSecond
-    ) {
+    private Set<String> parseRoles(String rolesText) {
+        if (rolesText == null || rolesText.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return linkedSetOf(rolesText.split(","));
     }
 
-    private record SessionRecord(String userId) {
+    private LinkedHashSet<String> linkedSetOf(String... values) {
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        Collections.addAll(result, values);
+        return result;
+    }
+
+    public static final class LoginResult {
+
+        private final List<String> steps;
+        private final String sessionId;
+        private final String token;
+        private final boolean canWriteOrder;
+        private final boolean validAfterBlacklist;
+
+        public LoginResult(List<String> steps,
+                           String sessionId,
+                           String token,
+                           boolean canWriteOrder,
+                           boolean validAfterBlacklist) {
+            this.steps = steps;
+            this.sessionId = sessionId;
+            this.token = token;
+            this.canWriteOrder = canWriteOrder;
+            this.validAfterBlacklist = validAfterBlacklist;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public String sessionId() {
+            return sessionId;
+        }
+
+        public String token() {
+            return token;
+        }
+
+        public boolean canWriteOrder() {
+            return canWriteOrder;
+        }
+
+        public boolean validAfterBlacklist() {
+            return validAfterBlacklist;
+        }
+    }
+
+    public static final class TokenClaims {
+
+        private final String subject;
+        private final Set<String> roles;
+        private final long expiresAtEpochSecond;
+
+        public TokenClaims(String subject, Set<String> roles, long expiresAtEpochSecond) {
+            this.subject = subject;
+            this.roles = roles;
+            this.expiresAtEpochSecond = expiresAtEpochSecond;
+        }
+
+        public String subject() {
+            return subject;
+        }
+
+        public Set<String> roles() {
+            return roles;
+        }
+
+        public long expiresAtEpochSecond() {
+            return expiresAtEpochSecond;
+        }
+    }
+
+    private static final class SessionRecord {
+
+        private final String userId;
+
+        private SessionRecord(String userId) {
+            this.userId = userId;
+        }
+
+        public String userId() {
+            return userId;
+        }
     }
 }

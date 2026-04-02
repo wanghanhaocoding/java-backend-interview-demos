@@ -41,7 +41,7 @@ public class ObservabilityDemoService {
     }
 
     public List<String> logs() {
-        return List.copyOf(logs);
+        return new ArrayList<>(logs);
     }
 
     public long counter(String metric) {

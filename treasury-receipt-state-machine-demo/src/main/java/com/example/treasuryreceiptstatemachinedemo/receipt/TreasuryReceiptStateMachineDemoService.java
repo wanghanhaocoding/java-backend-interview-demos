@@ -101,10 +101,32 @@ public class TreasuryReceiptStateMachineDemoService {
         return updated;
     }
 
-    private record Instruction(String instructionId, InstructionStatus status, int version) {
+    private static final class Instruction {
+
+        private final String instructionId;
+        private final InstructionStatus status;
+        private final int version;
+
+        private Instruction(String instructionId, InstructionStatus status, int version) {
+            this.instructionId = instructionId;
+            this.status = status;
+            this.version = version;
+        }
 
         private Instruction advanceTo(InstructionStatus nextStatus) {
             return new Instruction(instructionId, nextStatus, version + 1);
+        }
+
+        private String instructionId() {
+            return instructionId;
+        }
+
+        private InstructionStatus status() {
+            return status;
+        }
+
+        private int version() {
+            return version;
         }
     }
 
@@ -115,22 +137,53 @@ public class TreasuryReceiptStateMachineDemoService {
         SUCCESS;
 
         private boolean canTransitTo(InstructionStatus targetStatus) {
-            return switch (this) {
-                case SENT -> targetStatus == BANK_PROCESSING
-                        || targetStatus == SUCCESS
-                        || targetStatus == RECONCILING;
-                case BANK_PROCESSING -> targetStatus == SUCCESS || targetStatus == RECONCILING;
-                case RECONCILING -> targetStatus == SUCCESS;
-                case SUCCESS -> false;
-            };
+            switch (this) {
+                case SENT:
+                    return targetStatus == BANK_PROCESSING
+                            || targetStatus == SUCCESS
+                            || targetStatus == RECONCILING;
+                case BANK_PROCESSING:
+                    return targetStatus == SUCCESS || targetStatus == RECONCILING;
+                case RECONCILING:
+                    return targetStatus == SUCCESS;
+                case SUCCESS:
+                default:
+                    return false;
+            }
         }
     }
 
-    public record ReceiptFlowResult(
-            List<String> steps,
-            Map<String, String> finalStates,
-            List<String> ignoredEvents,
-            Map<String, Integer> versionByInstruction
-    ) {
+    public static final class ReceiptFlowResult {
+
+        private final List<String> steps;
+        private final Map<String, String> finalStates;
+        private final List<String> ignoredEvents;
+        private final Map<String, Integer> versionByInstruction;
+
+        public ReceiptFlowResult(List<String> steps,
+                                 Map<String, String> finalStates,
+                                 List<String> ignoredEvents,
+                                 Map<String, Integer> versionByInstruction) {
+            this.steps = steps;
+            this.finalStates = finalStates;
+            this.ignoredEvents = ignoredEvents;
+            this.versionByInstruction = versionByInstruction;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public Map<String, String> finalStates() {
+            return finalStates;
+        }
+
+        public List<String> ignoredEvents() {
+            return ignoredEvents;
+        }
+
+        public Map<String, Integer> versionByInstruction() {
+            return versionByInstruction;
+        }
     }
 }

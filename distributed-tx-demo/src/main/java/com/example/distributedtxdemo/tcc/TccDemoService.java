@@ -26,11 +26,13 @@ public class TccDemoService {
     public TccStepResult tryReserve(String bizNo, BigDecimal amount) {
         Reservation reservation = findReservation(bizNo);
         if (reservation != null) {
-            return switch (reservation.status()) {
-                case "TRY", "CONFIRMED" -> new TccStepResult(reservation.status(), true, "try idempotent or already confirmed");
-                case "CANCELED" -> new TccStepResult("BLOCKED", false, "try blocked by previous cancel, used for anti-hanging");
-                default -> new TccStepResult(reservation.status(), false, "unexpected status");
-            };
+            if ("TRY".equals(reservation.status()) || "CONFIRMED".equals(reservation.status())) {
+                return new TccStepResult(reservation.status(), true, "try idempotent or already confirmed");
+            }
+            if ("CANCELED".equals(reservation.status())) {
+                return new TccStepResult("BLOCKED", false, "try blocked by previous cancel, used for anti-hanging");
+            }
+            return new TccStepResult(reservation.status(), false, "unexpected status");
         }
 
         WalletAccountRepository.WalletAccount account = walletAccountRepository.findByAccountNo("ALICE");
@@ -145,12 +147,78 @@ public class TccDemoService {
         }
     }
 
-    private record Reservation(String bizNo, String status, BigDecimal amount) {
+    private static final class Reservation {
+
+        private final String bizNo;
+        private final String status;
+        private final BigDecimal amount;
+
+        private Reservation(String bizNo, String status, BigDecimal amount) {
+            this.bizNo = bizNo;
+            this.status = status;
+            this.amount = amount;
+        }
+
+        public String bizNo() {
+            return bizNo;
+        }
+
+        public String status() {
+            return status;
+        }
+
+        public BigDecimal amount() {
+            return amount;
+        }
     }
 
-    public record TccStepResult(String status, boolean success, String message) {
+    public static final class TccStepResult {
+
+        private final String status;
+        private final boolean success;
+        private final String message;
+
+        public TccStepResult(String status, boolean success, String message) {
+            this.status = status;
+            this.success = success;
+            this.message = message;
+        }
+
+        public String status() {
+            return status;
+        }
+
+        public boolean success() {
+            return success;
+        }
+
+        public String message() {
+            return message;
+        }
     }
 
-    public record TccFlowResult(String bizNo, String finalReservationStatus, List<String> steps) {
+    public static final class TccFlowResult {
+
+        private final String bizNo;
+        private final String finalReservationStatus;
+        private final List<String> steps;
+
+        public TccFlowResult(String bizNo, String finalReservationStatus, List<String> steps) {
+            this.bizNo = bizNo;
+            this.finalReservationStatus = finalReservationStatus;
+            this.steps = steps;
+        }
+
+        public String bizNo() {
+            return bizNo;
+        }
+
+        public String finalReservationStatus() {
+            return finalReservationStatus;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
     }
 }

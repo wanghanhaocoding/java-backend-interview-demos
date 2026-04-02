@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 @Service
 public class SpringAsyncSchedulerDemoService {
@@ -27,7 +28,7 @@ public class SpringAsyncSchedulerDemoService {
         CompletableFuture.allOf(workerFutures.toArray(new CompletableFuture[0])).join();
         List<SpringAsyncPoolDemoService.AsyncStep> workerSteps = workerFutures.stream()
                 .map(CompletableFuture::join)
-                .toList();
+                .collect(Collectors.toList());
 
         return CompletableFuture.completedFuture(new SpringAsyncPoolDemoService.SliceDispatchResult(sliceNo, schedulerThread, workerSteps));
     }

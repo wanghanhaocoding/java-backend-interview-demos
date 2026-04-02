@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 @Service
 public class AsyncJobCenterCoreDemoService {
@@ -62,7 +63,7 @@ public class AsyncJobCenterCoreDemoService {
         Map<String, List<String>> tableTasks = new LinkedHashMap<>();
         taskTables.forEach((name, tasks) -> tableTasks.put(
                 name,
-                tasks.stream().map(AsyncTask::taskId).toList()
+                tasks.stream().map(AsyncTask::taskId).collect(Collectors.toList())
         ));
 
         return new CoreFlowResult(steps, statusTimeline, stageTimeline, tableTasks);
@@ -121,13 +122,97 @@ public class AsyncJobCenterCoreDemoService {
         return String.format("t_%s_task_%d", taskType, pos);
     }
 
-    private record TaskScheduleCfg(String taskType, int scheduleLimit, int maxRetryNum, int maxRetryIntervalSeconds) {
+    private static final class TaskScheduleCfg {
+
+        private final String taskType;
+        private final int scheduleLimit;
+        private final int maxRetryNum;
+        private final int maxRetryIntervalSeconds;
+
+        private TaskScheduleCfg(String taskType, int scheduleLimit, int maxRetryNum, int maxRetryIntervalSeconds) {
+            this.taskType = taskType;
+            this.scheduleLimit = scheduleLimit;
+            this.maxRetryNum = maxRetryNum;
+            this.maxRetryIntervalSeconds = maxRetryIntervalSeconds;
+        }
+
+        private String taskType() {
+            return taskType;
+        }
+
+        private int scheduleLimit() {
+            return scheduleLimit;
+        }
+
+        private int maxRetryNum() {
+            return maxRetryNum;
+        }
+
+        private int maxRetryIntervalSeconds() {
+            return maxRetryIntervalSeconds;
+        }
     }
 
-    private record TaskPos(String taskType, int beginPos, int endPos) {
+    private static final class TaskPos {
+
+        private final String taskType;
+        private final int beginPos;
+        private final int endPos;
+
+        private TaskPos(String taskType, int beginPos, int endPos) {
+            this.taskType = taskType;
+            this.beginPos = beginPos;
+            this.endPos = endPos;
+        }
+
+        private String taskType() {
+            return taskType;
+        }
+
+        private int beginPos() {
+            return beginPos;
+        }
+
+        private int endPos() {
+            return endPos;
+        }
     }
 
-    private record AsyncTask(String taskId, String taskType, String stage, TaskStatus status, long orderTime) {
+    private static final class AsyncTask {
+
+        private final String taskId;
+        private final String taskType;
+        private final String stage;
+        private final TaskStatus status;
+        private final long orderTime;
+
+        private AsyncTask(String taskId, String taskType, String stage, TaskStatus status, long orderTime) {
+            this.taskId = taskId;
+            this.taskType = taskType;
+            this.stage = stage;
+            this.status = status;
+            this.orderTime = orderTime;
+        }
+
+        private String taskId() {
+            return taskId;
+        }
+
+        private String taskType() {
+            return taskType;
+        }
+
+        private String stage() {
+            return stage;
+        }
+
+        private TaskStatus status() {
+            return status;
+        }
+
+        private long orderTime() {
+            return orderTime;
+        }
     }
 
     private enum TaskStatus {
@@ -136,11 +221,37 @@ public class AsyncJobCenterCoreDemoService {
         SUCCESS
     }
 
-    public record CoreFlowResult(
-            List<String> steps,
-            List<String> statusTimeline,
-            List<String> stageTimeline,
-            Map<String, List<String>> tableTasks
-    ) {
+    public static final class CoreFlowResult {
+
+        private final List<String> steps;
+        private final List<String> statusTimeline;
+        private final List<String> stageTimeline;
+        private final Map<String, List<String>> tableTasks;
+
+        public CoreFlowResult(List<String> steps,
+                              List<String> statusTimeline,
+                              List<String> stageTimeline,
+                              Map<String, List<String>> tableTasks) {
+            this.steps = steps;
+            this.statusTimeline = statusTimeline;
+            this.stageTimeline = stageTimeline;
+            this.tableTasks = tableTasks;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public List<String> statusTimeline() {
+            return statusTimeline;
+        }
+
+        public List<String> stageTimeline() {
+            return stageTimeline;
+        }
+
+        public Map<String, List<String>> tableTasks() {
+            return tableTasks;
+        }
     }
 }

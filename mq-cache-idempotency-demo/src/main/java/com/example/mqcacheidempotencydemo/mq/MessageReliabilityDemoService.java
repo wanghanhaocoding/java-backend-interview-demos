@@ -66,12 +66,35 @@ public class MessageReliabilityDemoService {
         steps.add("5. 消费端收到重复消息，命中幂等表后直接忽略");
     }
 
-    public record EndToEndResult(
-            List<String> steps,
-            int deliveryAttempts,
-            String finalEventStatus,
-            int consumerRows
-    ) {
+    public static final class EndToEndResult {
+
+        private final List<String> steps;
+        private final int deliveryAttempts;
+        private final String finalEventStatus;
+        private final int consumerRows;
+
+        public EndToEndResult(List<String> steps, int deliveryAttempts, String finalEventStatus, int consumerRows) {
+            this.steps = steps;
+            this.deliveryAttempts = deliveryAttempts;
+            this.finalEventStatus = finalEventStatus;
+            this.consumerRows = consumerRows;
+        }
+
+        public List<String> steps() {
+            return steps;
+        }
+
+        public int deliveryAttempts() {
+            return deliveryAttempts;
+        }
+
+        public String finalEventStatus() {
+            return finalEventStatus;
+        }
+
+        public int consumerRows() {
+            return consumerRows;
+        }
     }
 
     private static final class OrderRecord {
