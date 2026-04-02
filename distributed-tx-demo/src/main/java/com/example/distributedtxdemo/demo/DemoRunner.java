@@ -57,19 +57,30 @@ public class DemoRunner implements CommandLineRunner {
 
         demoDataResetService.resetAll();
         printTitle("3. 柔性事务：成功回执先到，迟到处理中回执被忽略");
-        StateMachineDemoService.FlexibleDemoResult stateResult = stateMachineDemoService.successThenLateProcessingDemo("REQ-1001", BigDecimal.valueOf(88));
-        stateResult.steps().forEach(System.out::println);
+        StateMachineDemoService.ProjectStyleDistributedTxResult stateResult = stateMachineDemoService.projectStyleFlowDemo(
+                "REQ-1001",
+                BigDecimal.valueOf(88),
+                StateMachineDemoService.InstructionStatus.SUCCESS,
+                true,
+                false,
+                Duration.ofMinutes(10),
+                Duration.ofMinutes(5)
+        );
+        stateResult.timeline().forEach(System.out::println);
         System.out.println("finalStatus = " + stateResult.finalStatus());
 
         demoDataResetService.resetAll();
         printTitle("4. 柔性事务：超时补偿 / 对账扫描");
-        StateMachineDemoService.FlexibleDemoResult reconcileResult = stateMachineDemoService.timeoutCompensationDemo(
+        StateMachineDemoService.ProjectStyleDistributedTxResult reconcileResult = stateMachineDemoService.projectStyleFlowDemo(
                 "REQ-1002",
                 BigDecimal.valueOf(66),
+                StateMachineDemoService.InstructionStatus.PROCESSING,
+                false,
+                true,
                 Duration.ofMinutes(10),
                 Duration.ofMinutes(5)
         );
-        reconcileResult.steps().forEach(System.out::println);
+        reconcileResult.timeline().forEach(System.out::println);
 
         demoDataResetService.resetAll();
         printTitle("5. Outbox：业务成功 + 本地消息表 + 重试投递 + 消费幂等");

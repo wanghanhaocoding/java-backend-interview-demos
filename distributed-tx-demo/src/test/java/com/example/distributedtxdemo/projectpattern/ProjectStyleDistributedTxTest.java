@@ -31,7 +31,7 @@ class ProjectStyleDistributedTxTest {
         StateMachineDemoService.ProjectStyleDistributedTxResult result = stateMachineDemoService.projectStyleFlowDemo(
                 "REQ-PROJECT-01",
                 BigDecimal.valueOf(108),
-                true,
+                StateMachineDemoService.InstructionStatus.SUCCESS,
                 true,
                 false,
                 Duration.ofMinutes(10),
@@ -39,8 +39,8 @@ class ProjectStyleDistributedTxTest {
         );
 
         assertThat(result.finalStatus()).isEqualTo(StateMachineDemoService.InstructionStatus.SUCCESS);
-        assertThat(result.timeline()).anyMatch(line -> line.contains("本地事务"));
-        assertThat(result.timeline()).anyMatch(line -> line.contains("迟到回执"));
+        assertThat(result.timeline()).anyMatch(line -> line.contains("发起支付接口"));
+        assertThat(result.timeline()).anyMatch(line -> line.contains("迟到回调接口"));
         assertThat(result.guarantees()).hasSize(4);
     }
 
@@ -49,7 +49,7 @@ class ProjectStyleDistributedTxTest {
         StateMachineDemoService.ProjectStyleDistributedTxResult result = stateMachineDemoService.projectStyleFlowDemo(
                 "REQ-PROJECT-02",
                 BigDecimal.valueOf(58),
-                false,
+                StateMachineDemoService.InstructionStatus.PROCESSING,
                 false,
                 true,
                 Duration.ofMinutes(10),
@@ -57,6 +57,6 @@ class ProjectStyleDistributedTxTest {
         );
 
         assertThat(result.finalStatus()).isEqualTo(StateMachineDemoService.InstructionStatus.FAIL);
-        assertThat(result.timeline()).anyMatch(line -> line.contains("定时补偿/对账"));
+        assertThat(result.timeline()).anyMatch(line -> line.contains("定时补偿任务"));
     }
 }

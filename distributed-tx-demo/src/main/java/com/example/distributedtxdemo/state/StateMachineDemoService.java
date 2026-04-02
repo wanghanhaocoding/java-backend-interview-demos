@@ -21,46 +21,39 @@ public class StateMachineDemoService {
     }
 
     @Transactional
+    public InstructionRecord submitInstruction(String requestNo, BigDecimal amount) {
+        insertInstruction(requestNo, amount);
+        return requireInstruction(requestNo);
+    }
+
+    @Transactional
     public void createInstruction(String requestNo, BigDecimal amount) {
-        jdbcTemplate.update(
-                "insert into payment_instruction(request_no, status, amount, version, last_message, created_at, updated_at) values (?, ?, ?, 0, ?, current_timestamp, current_timestamp)",
-                requestNo,
-                InstructionStatus.WAIT_RECEIPT.name(),
-                amount,
-                "instruction-created"
-        );
+        insertInstruction(requestNo, amount);
+    }
+
+    @Transactional
+    public ReceiptApplyResult handleBankReceipt(String requestNo,
+                                                String bankReceiptNo,
+                                                InstructionStatus bankStatus,
+                                                String channelMessage) {
+        validateReceiptStatus(bankStatus);
+        String detail = channelMessage == null || channelMessage.isBlank() ? "bank-callback" : channelMessage;
+        return applyReceiptInternal(requestNo, bankStatus, bankReceiptNo + " | " + detail);
     }
 
     @Transactional
     public ReceiptApplyResult applyReceipt(String requestNo, InstructionStatus incomingStatus, String message) {
-        InstructionRecord current = requireInstruction(requestNo);
-        if (!canTransit(current.status(), incomingStatus)) {
-            return new ReceiptApplyResult(false, current.status(), message + " -> ignored", "state-machine-blocked");
-        }
+        return applyReceiptInternal(requestNo, incomingStatus, message);
+    }
 
-        int updated = jdbcTemplate.update(
-                "update payment_instruction set status = ?, version = version + 1, last_message = ?, updated_at = current_timestamp where request_no = ? and version = ?",
-                incomingStatus.name(),
-                message,
-                requestNo,
-                current.version()
-        );
-
-        if (updated == 0) {
-            InstructionRecord latest = requireInstruction(requestNo);
-            return new ReceiptApplyResult(false, latest.status(), message + " -> lost race", "optimistic-lock-race");
-        }
-
-        return new ReceiptApplyResult(true, incomingStatus, message + " -> applied", "version-check-passed");
+    @Transactional
+    public int compensateTimeoutInstructions(Duration timeout) {
+        return doReconcileTimeoutInstructions(timeout);
     }
 
     @Transactional
     public int reconcileTimeoutInstructions(Duration timeout) {
-        LocalDateTime deadline = LocalDateTime.now().minus(timeout);
-        return jdbcTemplate.update(
-                "update payment_instruction set status = 'FAIL', version = version + 1, last_message = 'timeout-reconcile', updated_at = current_timestamp where status in ('WAIT_RECEIPT', 'PROCESSING') and updated_at < ?",
-                deadline
-        );
+        return doReconcileTimeoutInstructions(timeout);
     }
 
     public void backdateInstruction(String requestNo, Duration duration) {
@@ -90,15 +83,25 @@ public class StateMachineDemoService {
     }
 
     public FlexibleDemoResult successThenLateProcessingDemo(String requestNo, BigDecimal amount) {
-        createInstruction(requestNo, amount);
+        submitInstruction(requestNo, amount);
         List<String> steps = new ArrayList<>();
-        steps.add("step-1 create instruction in local transaction -> WAIT_RECEIPT");
+        steps.add("step-1 submit payment instruction -> WAIT_RECEIPT");
 
-        ReceiptApplyResult success = applyReceipt(requestNo, InstructionStatus.SUCCESS, "bank-success-first");
-        steps.add("step-2 first receipt -> " + success.message() + " | reason=" + success.reason());
+        ReceiptApplyResult success = handleBankReceipt(
+                requestNo,
+                "BANK-RCP-SUCCESS-" + requestNo,
+                InstructionStatus.SUCCESS,
+                "first callback says success"
+        );
+        steps.add("step-2 bank callback success -> " + success.message() + " | reason=" + success.reason());
 
-        ReceiptApplyResult processing = applyReceipt(requestNo, InstructionStatus.PROCESSING, "bank-processing-late");
-        steps.add("step-3 late receipt -> " + processing.message() + " | reason=" + processing.reason());
+        ReceiptApplyResult processing = handleBankReceipt(
+                requestNo,
+                "BANK-RCP-LATE-" + requestNo,
+                InstructionStatus.PROCESSING,
+                "late callback still says processing"
+        );
+        steps.add("step-3 late callback processing -> " + processing.message() + " | reason=" + processing.reason());
 
         InstructionRecord finalRecord = requireInstruction(requestNo);
         steps.add("step-4 final db status = " + finalRecord.status() + ", version=" + finalRecord.version());
@@ -106,13 +109,13 @@ public class StateMachineDemoService {
     }
 
     public FlexibleDemoResult timeoutCompensationDemo(String requestNo, BigDecimal amount, Duration overdueFor, Duration timeout) {
-        createInstruction(requestNo, amount);
+        submitInstruction(requestNo, amount);
         backdateInstruction(requestNo, overdueFor);
 
         List<String> steps = new ArrayList<>();
-        steps.add("step-1 create instruction in local transaction -> WAIT_RECEIPT");
-        steps.add("step-2 manually make instruction overdue by " + overdueFor.toMinutes() + " minutes");
-        steps.add("step-3 reconcile updated rows = " + reconcileTimeoutInstructions(timeout));
+        steps.add("step-1 submit payment instruction -> WAIT_RECEIPT");
+        steps.add("step-2 mark instruction overdue by " + overdueFor.toMinutes() + " minutes");
+        steps.add("step-3 compensate timeout rows = " + compensateTimeoutInstructions(timeout));
 
         InstructionRecord finalRecord = requireInstruction(requestNo);
         steps.add("step-4 final db status = " + finalRecord.status() + ", lastMessage=" + finalRecord.lastMessage());
@@ -126,36 +129,62 @@ public class StateMachineDemoService {
                                                                 boolean triggerTimeoutCompensation,
                                                                 Duration overdueFor,
                                                                 Duration timeout) {
-        // 第一步只保证本地落库成功，银行处理结果不会被包含进这个本地事务。
-        createInstruction(requestNo, amount);
+        InstructionStatus firstReceiptStatus = successReceiptFirst ? InstructionStatus.SUCCESS : InstructionStatus.PROCESSING;
+        return projectStyleFlowDemo(
+                requestNo,
+                amount,
+                firstReceiptStatus,
+                appendLateProcessingReceipt,
+                triggerTimeoutCompensation,
+                overdueFor,
+                timeout
+        );
+    }
+
+    public ProjectStyleDistributedTxResult projectStyleFlowDemo(String requestNo,
+                                                                BigDecimal amount,
+                                                                InstructionStatus firstReceiptStatus,
+                                                                boolean appendLateProcessingReceipt,
+                                                                boolean triggerTimeoutCompensation,
+                                                                Duration overdueFor,
+                                                                Duration timeout) {
+        validateReceiptStatus(firstReceiptStatus);
+
+        submitInstruction(requestNo, amount);
         List<String> timeline = new ArrayList<>();
-        timeline.add("1) 本地事务：创建指令单和初始状态，requestNo=" + requestNo + ", status=WAIT_RECEIPT");
-        timeline.add("2) 外部系统：此时银行/第三方不在本地事务里，后续靠回执或补偿收敛结果");
+        timeline.add("1) 发起支付接口：本地事务创建指令单，requestNo=" + requestNo + ", status=WAIT_RECEIPT");
+        timeline.add("2) 银行处理和数据库事务分离，后续只能靠回调和补偿推进结果");
 
-        // 银行回执异步到达后，通过状态机和版本控制推进状态。
-        if (successReceiptFirst) {
-            ReceiptApplyResult success = applyReceipt(requestNo, InstructionStatus.SUCCESS, "bank-success-first");
-            timeline.add("3) 第一次回执：SUCCESS -> " + success.message() + " | reason=" + success.reason());
-        } else {
-            ReceiptApplyResult processing = applyReceipt(requestNo, InstructionStatus.PROCESSING, "bank-processing-first");
-            timeline.add("3) 第一次回执：PROCESSING -> " + processing.message() + " | reason=" + processing.reason());
-        }
+        ReceiptApplyResult firstReceipt = handleBankReceipt(
+                requestNo,
+                "BANK-RCP-FIRST-" + requestNo,
+                firstReceiptStatus,
+                "first-bank-callback"
+        );
+        timeline.add("3) 银行回调接口：status=" + firstReceiptStatus + " -> " + firstReceipt.message()
+                + " | reason=" + firstReceipt.reason());
 
-        // 迟到的中间态回执不会强行覆盖已经推进到更后面的状态。
         if (appendLateProcessingReceipt) {
-            ReceiptApplyResult processingLate = applyReceipt(requestNo, InstructionStatus.PROCESSING, "bank-processing-late");
-            timeline.add("4) 迟到回执：PROCESSING -> " + processingLate.message() + " | reason=" + processingLate.reason());
+            ReceiptApplyResult processingLate = handleBankReceipt(
+                    requestNo,
+                    "BANK-RCP-LATE-" + requestNo,
+                    InstructionStatus.PROCESSING,
+                    "late-processing-callback"
+            );
+            timeline.add("4) 迟到回调接口：status=PROCESSING -> " + processingLate.message()
+                    + " | reason=" + processingLate.reason());
         }
 
-        // 长时间未到终态时，靠定时补偿或对账任务把结果继续向终态收敛。
         if (triggerTimeoutCompensation) {
             backdateInstruction(requestNo, overdueFor);
-            int updatedRows = reconcileTimeoutInstructions(timeout);
-            timeline.add("5) 定时补偿/对账：扫描超时未终态记录，updatedRows=" + updatedRows);
+            int updatedRows = compensateTimeoutInstructions(timeout);
+            timeline.add("5) 定时补偿任务：扫描超时未终态记录，updatedRows=" + updatedRows);
         }
 
         InstructionRecord finalRecord = requireInstruction(requestNo);
-        timeline.add("6) 最终结果：status=" + finalRecord.status() + ", version=" + finalRecord.version() + ", lastMessage=" + finalRecord.lastMessage());
+        timeline.add("6) 最终结果：status=" + finalRecord.status()
+                + ", version=" + finalRecord.version()
+                + ", lastMessage=" + finalRecord.lastMessage());
 
         List<String> guarantees = List.of(
                 "本地事务保证：指令单和初始状态落库原子成功或一起失败",
@@ -165,6 +194,52 @@ public class StateMachineDemoService {
         );
 
         return new ProjectStyleDistributedTxResult(requestNo, finalRecord.status(), timeline, guarantees);
+    }
+
+    private void insertInstruction(String requestNo, BigDecimal amount) {
+        jdbcTemplate.update(
+                "insert into payment_instruction(request_no, status, amount, version, last_message, created_at, updated_at) values (?, ?, ?, 0, ?, current_timestamp, current_timestamp)",
+                requestNo,
+                InstructionStatus.WAIT_RECEIPT.name(),
+                amount,
+                "instruction-created"
+        );
+    }
+
+    private ReceiptApplyResult applyReceiptInternal(String requestNo, InstructionStatus incomingStatus, String message) {
+        InstructionRecord current = requireInstruction(requestNo);
+        if (!canTransit(current.status(), incomingStatus)) {
+            return new ReceiptApplyResult(false, current.status(), message + " -> ignored", "state-machine-blocked");
+        }
+
+        int updated = jdbcTemplate.update(
+                "update payment_instruction set status = ?, version = version + 1, last_message = ?, updated_at = current_timestamp where request_no = ? and version = ?",
+                incomingStatus.name(),
+                message,
+                requestNo,
+                current.version()
+        );
+
+        if (updated == 0) {
+            InstructionRecord latest = requireInstruction(requestNo);
+            return new ReceiptApplyResult(false, latest.status(), message + " -> lost race", "optimistic-lock-race");
+        }
+
+        return new ReceiptApplyResult(true, incomingStatus, message + " -> applied", "version-check-passed");
+    }
+
+    private int doReconcileTimeoutInstructions(Duration timeout) {
+        LocalDateTime deadline = LocalDateTime.now().minus(timeout);
+        return jdbcTemplate.update(
+                "update payment_instruction set status = 'FAIL', version = version + 1, last_message = 'timeout-reconcile', updated_at = current_timestamp where status in ('WAIT_RECEIPT', 'PROCESSING') and updated_at < ?",
+                deadline
+        );
+    }
+
+    private void validateReceiptStatus(InstructionStatus bankStatus) {
+        if (bankStatus == InstructionStatus.WAIT_RECEIPT) {
+            throw new IllegalArgumentException("bank receipt status must be PROCESSING, SUCCESS or FAIL");
+        }
     }
 
     private InstructionRecord requireInstruction(String requestNo) {
@@ -180,7 +255,9 @@ public class StateMachineDemoService {
             return false;
         }
         return switch (current) {
-            case WAIT_RECEIPT -> incoming == InstructionStatus.PROCESSING || incoming == InstructionStatus.SUCCESS || incoming == InstructionStatus.FAIL;
+            case WAIT_RECEIPT -> incoming == InstructionStatus.PROCESSING
+                    || incoming == InstructionStatus.SUCCESS
+                    || incoming == InstructionStatus.FAIL;
             case PROCESSING -> incoming == InstructionStatus.SUCCESS || incoming == InstructionStatus.FAIL;
             case SUCCESS, FAIL -> false;
         };

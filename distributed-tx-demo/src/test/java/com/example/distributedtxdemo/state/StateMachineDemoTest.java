@@ -26,22 +26,52 @@ class StateMachineDemoTest {
     }
 
     @Test
-    void terminalStatusCannotBeOverwrittenByLateReceipt() {
-        StateMachineDemoService.FlexibleDemoResult result = stateMachineDemoService.successThenLateProcessingDemo("REQ-STATE-01", BigDecimal.valueOf(88));
+    void submitInstructionPersistsInitialState() {
+        StateMachineDemoService.InstructionRecord created = stateMachineDemoService.submitInstruction(
+                "REQ-STATE-00",
+                BigDecimal.valueOf(88)
+        );
 
-        assertThat(result.finalStatus()).isEqualTo(StateMachineDemoService.InstructionStatus.SUCCESS);
-        assertThat(result.steps()).anyMatch(step -> step.contains("ignored"));
+        assertThat(created.requestNo()).isEqualTo("REQ-STATE-00");
+        assertThat(created.status()).isEqualTo(StateMachineDemoService.InstructionStatus.WAIT_RECEIPT);
+        assertThat(created.version()).isZero();
+    }
+
+    @Test
+    void terminalStatusCannotBeOverwrittenByLateReceipt() {
+        stateMachineDemoService.submitInstruction("REQ-STATE-01", BigDecimal.valueOf(88));
+
+        StateMachineDemoService.ReceiptApplyResult success = stateMachineDemoService.handleBankReceipt(
+                "REQ-STATE-01",
+                "BANK-RCP-0001",
+                StateMachineDemoService.InstructionStatus.SUCCESS,
+                "first callback says success"
+        );
+        StateMachineDemoService.ReceiptApplyResult lateProcessing = stateMachineDemoService.handleBankReceipt(
+                "REQ-STATE-01",
+                "BANK-RCP-0002",
+                StateMachineDemoService.InstructionStatus.PROCESSING,
+                "late callback still says processing"
+        );
+        StateMachineDemoService.InstructionRecord finalRecord = stateMachineDemoService.findInstruction("REQ-STATE-01");
+
+        assertThat(success.updated()).isTrue();
+        assertThat(lateProcessing.updated()).isFalse();
+        assertThat(lateProcessing.reason()).isEqualTo("state-machine-blocked");
+        assertThat(finalRecord.status()).isEqualTo(StateMachineDemoService.InstructionStatus.SUCCESS);
+        assertThat(finalRecord.version()).isEqualTo(1);
     }
 
     @Test
     void timeoutCompensationMovesInstructionToFail() {
-        StateMachineDemoService.FlexibleDemoResult result = stateMachineDemoService.timeoutCompensationDemo(
-                "REQ-STATE-02",
-                BigDecimal.valueOf(66),
-                Duration.ofMinutes(10),
-                Duration.ofMinutes(5)
-        );
+        stateMachineDemoService.submitInstruction("REQ-STATE-02", BigDecimal.valueOf(66));
+        stateMachineDemoService.backdateInstruction("REQ-STATE-02", Duration.ofMinutes(10));
 
-        assertThat(result.finalStatus()).isEqualTo(StateMachineDemoService.InstructionStatus.FAIL);
+        int updatedRows = stateMachineDemoService.compensateTimeoutInstructions(Duration.ofMinutes(5));
+        StateMachineDemoService.InstructionRecord finalRecord = stateMachineDemoService.findInstruction("REQ-STATE-02");
+
+        assertThat(updatedRows).isEqualTo(1);
+        assertThat(finalRecord.status()).isEqualTo(StateMachineDemoService.InstructionStatus.FAIL);
+        assertThat(finalRecord.lastMessage()).isEqualTo("timeout-reconcile");
     }
 }
