@@ -2,107 +2,395 @@ package com.example.schedulecenteroomdemo.oom;
 
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Service
 public class ScheduleCenterOomDemoService {
 
-    private static final int SCHEDULER_ARRIVAL_PER_SECOND = 10;
+    private static final int BUCKETS_PER_MINUTE = 5;
+    private static final int SCANNED_MINUTE_WINDOWS = 2;
+    private static final int SCHEDULER_FIXED_RATE_MILLIS = 1000;
     private static final int SLICE_HOLD_SECONDS = 60;
+    private static final int SCHEDULER_POOL_CORE_THREADS = 10;
     private static final int SCHEDULER_MAX_THREADS = 100;
-    private static final int TRIGGER_TASKS_PER_SLICE_PER_SECOND = 12;
+    private static final int SCHEDULER_QUEUE_CAPACITY = 99999;
+    private static final int TRIGGER_ZRANGE_GAP_SECONDS = 1;
+    private static final int TRIGGER_POOL_CORE_THREADS = 10;
     private static final int TRIGGER_MAX_THREADS = 100;
-    private static final int CALLBACK_SECONDS = 2;
-    private static final int RETAINED_KB_PER_TRIGGER_TASK = 18;
-    private static final int RETAINED_KB_PER_QUEUED_SLICE = 384;
+    private static final int TRIGGER_QUEUE_CAPACITY = 99999;
+    private static final int ASSUMED_TRIGGER_TASKS_PER_SLICE_PER_SECOND = 12;
+    private static final int ASSUMED_CALLBACK_SECONDS = 2;
+    private static final int ESTIMATED_RETAINED_KB_PER_TRIGGER_TASK = 18;
+    private static final int ESTIMATED_RETAINED_KB_PER_QUEUED_SLICE = 448;
 
     public OomCaseResult accumulationOomCase() {
+        int schedulerArrivalPerSecond = BUCKETS_PER_MINUTE * SCANNED_MINUTE_WINDOWS;
         double schedulerCapacityPerSecond = (double) SCHEDULER_MAX_THREADS / SLICE_HOLD_SECONDS;
-        double schedulerBacklogPerMinute = (SCHEDULER_ARRIVAL_PER_SECOND - schedulerCapacityPerSecond) * 60;
-        int triggerArrivalPerSecond = SCHEDULER_ARRIVAL_PER_SECOND * TRIGGER_TASKS_PER_SLICE_PER_SECOND;
-        double triggerCapacityPerSecond = (double) TRIGGER_MAX_THREADS / CALLBACK_SECONDS;
+        double schedulerBacklogPerMinute = (schedulerArrivalPerSecond - schedulerCapacityPerSecond) * 60;
+        double schedulerRetainedMb = schedulerBacklogPerMinute * ESTIMATED_RETAINED_KB_PER_QUEUED_SLICE / 1024.0;
+
+        int triggerArrivalPerSecond = schedulerArrivalPerSecond * ASSUMED_TRIGGER_TASKS_PER_SLICE_PER_SECOND;
+        double triggerCapacityPerSecond = (double) TRIGGER_MAX_THREADS / ASSUMED_CALLBACK_SECONDS;
         double triggerBacklogPerMinute = (triggerArrivalPerSecond - triggerCapacityPerSecond) * 60;
-        double triggerRetainedMbPerMinute = triggerBacklogPerMinute * RETAINED_KB_PER_TRIGGER_TASK / 1024.0;
-        double schedulerRetainedMb = schedulerBacklogPerMinute * RETAINED_KB_PER_QUEUED_SLICE / 1024.0;
+        double triggerRetainedMbPerMinute = triggerBacklogPerMinute * ESTIMATED_RETAINED_KB_PER_TRIGGER_TASK / 1024.0;
+
+        XtimerRuntimeProfile runtimeProfile = new XtimerRuntimeProfile(
+                BUCKETS_PER_MINUTE,
+                SCANNED_MINUTE_WINDOWS,
+                SCHEDULER_FIXED_RATE_MILLIS,
+                SLICE_HOLD_SECONDS,
+                SCHEDULER_POOL_CORE_THREADS,
+                SCHEDULER_MAX_THREADS,
+                SCHEDULER_QUEUE_CAPACITY,
+                TRIGGER_ZRANGE_GAP_SECONDS,
+                TRIGGER_POOL_CORE_THREADS,
+                TRIGGER_MAX_THREADS,
+                TRIGGER_QUEUE_CAPACITY
+        );
 
         SchedulerPressure schedulerPressure = new SchedulerPressure(
-                SCHEDULER_ARRIVAL_PER_SECOND,
+                schedulerArrivalPerSecond,
                 SLICE_HOLD_SECONDS,
                 SCHEDULER_MAX_THREADS,
                 schedulerCapacityPerSecond,
                 schedulerBacklogPerMinute,
-                schedulerRetainedMb
+                schedulerRetainedMb,
+                ESTIMATED_RETAINED_KB_PER_QUEUED_SLICE
         );
 
         TriggerPressure triggerPressure = new TriggerPressure(
                 triggerArrivalPerSecond,
                 TRIGGER_MAX_THREADS,
-                CALLBACK_SECONDS,
+                ASSUMED_CALLBACK_SECONDS,
                 triggerCapacityPerSecond,
                 triggerBacklogPerMinute,
-                triggerRetainedMbPerMinute
+                triggerRetainedMbPerMinute,
+                ESTIMATED_RETAINED_KB_PER_TRIGGER_TASK
         );
 
-        List<String> incidentSteps = List.of(
-                "1. 调度层每秒提交 10 个分钟分片扫描任务，但单个任务会持续接近 60 秒",
-                "2. schedulerPool 的处理能力只有约 1.67 个分片每秒，所以每分钟仍会新增约 500 个待执行分片",
-                "3. 每个分片又会持续向 triggerPool 投递到期任务，回调一慢，triggerPool 立刻跟着积压",
-                "4. 线程池队列里开始堆 Future、集合对象、任务 DTO、HTTP 回调上下文和扫描结果",
-                "5. Redis 异常触发 DB fallback 时，单次扫描拿到的结果集更大，堆里对象数量进一步被放大",
-                "6. 现象通常先是 Full GC 越来越频繁，继续恶化后老年代回不下来，最终出现 OOM"
+        List<String> incidentSteps = Arrays.asList(
+                "1. 在真实 xtimer 里，SchedulerWorker 每秒都会把 5 个 bucket 的“上一分钟补偿 + 当前分钟实时”两轮分片扔给 SchedulerTask.asyncHandleSlice，所以调度层固定每秒提交 10 个分片。",
+                "2. SchedulerTask 抢到分布式锁后会同步进入 TriggerWorker.work；而 TriggerWorker 内部通过 Timer.scheduleAtFixedRate + CountDownLatch 把该 minuteBucketKey 扫到分钟结束，这会把 schedulerPool 线程挂住接近 60 秒。",
+                "3. schedulerPool.maxPoolSize=100 但 queueCapacity=99999，压力不会立刻失败，而是先被大队列吃掉；同时 TriggerTimerTask 每秒做一次 rangeByScore，把拿到的 TaskModel 继续异步丢给 triggerPool。",
+                "4. 一旦回调下游 RT 变慢，triggerPool.queueCapacity=99999 也会开始吞积压；队列里堆的不是简单整数，而是 TaskModel、回调请求体、Future、集合对象和上下文。",
+                "5. Redis 取数异常时，TriggerTimerTask 会走 taskMapper.getTasksByTimeRange 做 DB fallback，这会把单批结果集进一步放大，导致 Full GC 先越来越频繁，继续恶化后老年代回不下来，最终才是 OOM。",
+                "6. 所以这个问题更像 xtimer 的积压型 OOM，而不是典型静态集合泄漏。"
         );
 
-        List<String> diagnosisSteps = List.of(
-                "1. 先看 schedulerPool 和 triggerPool 的 queueSize 是否持续单向增长，确认这是积压不是瞬时尖峰",
-                "2. 再看 Redis RT、DB fallback RT 和 callback RT，确认是不是某条异常链路把消费能力压垮了",
-                "3. 用 GC 指标和对象直方图确认堆里主要是任务对象、集合、Future 和上下文，而不是典型静态引用泄漏",
-                "4. 最后回到代码链路，把队列过大、长生命周期扫描和 fallback 放大量串成完整根因"
+        List<String> diagnosisSteps = Arrays.asList(
+                "1. 先看 schedulerPool.queueSize 和 triggerPool.queueSize 是否持续单向增长，确认这是积压，不是瞬时峰值。",
+                "2. 再看 Redis rangeByScore RT、TaskMapper.getTasksByTimeRange RT 和回调 RT，确认是不是 Redis 抖动或慢回调把消费能力拖垮了。",
+                "3. 用 jstat、jcmd、jmap 看 Full GC 回收效果和对象直方图，如果堆里主要是任务 DTO、集合、Future 和回调上下文，就更像积压放大，不是纯泄漏。",
+                "4. 最后回到 xtimer 真实代码链路，把每秒提交、近一分钟长扫描、99999 深队列、DB fallback 放大这几件事拼成根因。"
         );
 
-        List<String> diagnosisCommands = List.of(
+        List<String> diagnosisCommands = Arrays.asList(
                 "jstat -gcutil <pid> 1000 20",
                 "jcmd <pid> GC.heap_info",
-                "jmap -histo:live <pid>"
+                "jmap -histo:live <pid>",
+                "top -Hp <pid>"
         );
 
-        List<String> fixes = List.of(
-                "1. 先扩容节点，把当前分片竞争压力快速摊薄",
-                "2. 给 trigger 投递做限速和背压，避免慢回调继续把对象堆在内存里",
-                "3. 把 schedulerPool 和 triggerPool 的超大队列改成有限长度",
-                "4. Redis fallback 查询增加上限和更严格过滤，避免异常路径放大量过大",
-                "5. 缩短单个分片扫描任务生命周期，把一分钟长任务切成更短批次"
+        List<String> fixes = Arrays.asList(
+                "1. 先缩小扫描批次和触发投递速率，让 triggerPool 先从积压里爬出来。",
+                "2. 立即把 schedulerPool 和 triggerPool 的超大队列改成有限长度，宁可暴露背压，也不要继续把对象堆进堆内存。",
+                "3. 抢锁前增加本机水位判断，让已经饱和的节点不再继续拿 minuteBucketKey。",
+                "4. 给 TaskCache 异常路径下的 DB fallback 加严格上限，避免 getTasksByTimeRange 把结果集做大。",
+                "5. 长期把 TriggerWorker.work 这种近一分钟长任务拆短，并把回调链路进一步异步化，例如按你简历里的方向用 MQ 做削峰。"
         );
 
-        return new OomCaseResult(incidentSteps, schedulerPressure, triggerPressure, diagnosisSteps, diagnosisCommands, fixes);
+        return new OomCaseResult(runtimeProfile, incidentSteps, schedulerPressure, triggerPressure, diagnosisSteps, diagnosisCommands, fixes);
     }
 
-    public record SchedulerPressure(
-            int arrivalPerSecond,
-            int sliceHoldSeconds,
-            int maxThreads,
-            double capacityPerSecond,
-            double backlogPerMinute,
-            double estimatedRetainedMb
-    ) {
+    public static final class XtimerRuntimeProfile {
+
+        private final int bucketsPerMinute;
+        private final int scannedMinuteWindows;
+        private final int schedulerFixedRateMillis;
+        private final int sliceHoldSeconds;
+        private final int schedulerPoolCoreThreads;
+        private final int schedulerMaxThreads;
+        private final int schedulerQueueCapacity;
+        private final int triggerZrangeGapSeconds;
+        private final int triggerPoolCoreThreads;
+        private final int triggerMaxThreads;
+        private final int triggerQueueCapacity;
+
+        public XtimerRuntimeProfile(int bucketsPerMinute,
+                                    int scannedMinuteWindows,
+                                    int schedulerFixedRateMillis,
+                                    int sliceHoldSeconds,
+                                    int schedulerPoolCoreThreads,
+                                    int schedulerMaxThreads,
+                                    int schedulerQueueCapacity,
+                                    int triggerZrangeGapSeconds,
+                                    int triggerPoolCoreThreads,
+                                    int triggerMaxThreads,
+                                    int triggerQueueCapacity) {
+            this.bucketsPerMinute = bucketsPerMinute;
+            this.scannedMinuteWindows = scannedMinuteWindows;
+            this.schedulerFixedRateMillis = schedulerFixedRateMillis;
+            this.sliceHoldSeconds = sliceHoldSeconds;
+            this.schedulerPoolCoreThreads = schedulerPoolCoreThreads;
+            this.schedulerMaxThreads = schedulerMaxThreads;
+            this.schedulerQueueCapacity = schedulerQueueCapacity;
+            this.triggerZrangeGapSeconds = triggerZrangeGapSeconds;
+            this.triggerPoolCoreThreads = triggerPoolCoreThreads;
+            this.triggerMaxThreads = triggerMaxThreads;
+            this.triggerQueueCapacity = triggerQueueCapacity;
+        }
+
+        public int bucketsPerMinute() {
+            return bucketsPerMinute;
+        }
+
+        public int scannedMinuteWindows() {
+            return scannedMinuteWindows;
+        }
+
+        public int schedulerFixedRateMillis() {
+            return schedulerFixedRateMillis;
+        }
+
+        public int sliceHoldSeconds() {
+            return sliceHoldSeconds;
+        }
+
+        public int schedulerPoolCoreThreads() {
+            return schedulerPoolCoreThreads;
+        }
+
+        public int schedulerMaxThreads() {
+            return schedulerMaxThreads;
+        }
+
+        public int schedulerQueueCapacity() {
+            return schedulerQueueCapacity;
+        }
+
+        public int triggerZrangeGapSeconds() {
+            return triggerZrangeGapSeconds;
+        }
+
+        public int triggerPoolCoreThreads() {
+            return triggerPoolCoreThreads;
+        }
+
+        public int triggerMaxThreads() {
+            return triggerMaxThreads;
+        }
+
+        public int triggerQueueCapacity() {
+            return triggerQueueCapacity;
+        }
+
+        @Override
+        public String toString() {
+            return "XtimerRuntimeProfile{" +
+                    "bucketsPerMinute=" + bucketsPerMinute +
+                    ", scannedMinuteWindows=" + scannedMinuteWindows +
+                    ", schedulerFixedRateMillis=" + schedulerFixedRateMillis +
+                    ", sliceHoldSeconds=" + sliceHoldSeconds +
+                    ", schedulerPoolCoreThreads=" + schedulerPoolCoreThreads +
+                    ", schedulerMaxThreads=" + schedulerMaxThreads +
+                    ", schedulerQueueCapacity=" + schedulerQueueCapacity +
+                    ", triggerZrangeGapSeconds=" + triggerZrangeGapSeconds +
+                    ", triggerPoolCoreThreads=" + triggerPoolCoreThreads +
+                    ", triggerMaxThreads=" + triggerMaxThreads +
+                    ", triggerQueueCapacity=" + triggerQueueCapacity +
+                    '}';
+        }
     }
 
-    public record TriggerPressure(
-            int arrivalPerSecond,
-            int maxThreads,
-            int callbackSeconds,
-            double capacityPerSecond,
-            double backlogPerMinute,
-            double estimatedRetainedMbPerMinute
-    ) {
+    public static final class SchedulerPressure {
+
+        private final int arrivalPerSecond;
+        private final int sliceHoldSeconds;
+        private final int maxThreads;
+        private final double capacityPerSecond;
+        private final double backlogPerMinute;
+        private final double estimatedRetainedMb;
+        private final int estimatedRetainedKbPerQueuedSlice;
+
+        public SchedulerPressure(int arrivalPerSecond,
+                                 int sliceHoldSeconds,
+                                 int maxThreads,
+                                 double capacityPerSecond,
+                                 double backlogPerMinute,
+                                 double estimatedRetainedMb,
+                                 int estimatedRetainedKbPerQueuedSlice) {
+            this.arrivalPerSecond = arrivalPerSecond;
+            this.sliceHoldSeconds = sliceHoldSeconds;
+            this.maxThreads = maxThreads;
+            this.capacityPerSecond = capacityPerSecond;
+            this.backlogPerMinute = backlogPerMinute;
+            this.estimatedRetainedMb = estimatedRetainedMb;
+            this.estimatedRetainedKbPerQueuedSlice = estimatedRetainedKbPerQueuedSlice;
+        }
+
+        public int arrivalPerSecond() {
+            return arrivalPerSecond;
+        }
+
+        public int sliceHoldSeconds() {
+            return sliceHoldSeconds;
+        }
+
+        public int maxThreads() {
+            return maxThreads;
+        }
+
+        public double capacityPerSecond() {
+            return capacityPerSecond;
+        }
+
+        public double backlogPerMinute() {
+            return backlogPerMinute;
+        }
+
+        public double estimatedRetainedMb() {
+            return estimatedRetainedMb;
+        }
+
+        public int estimatedRetainedKbPerQueuedSlice() {
+            return estimatedRetainedKbPerQueuedSlice;
+        }
+
+        @Override
+        public String toString() {
+            return "SchedulerPressure{" +
+                    "arrivalPerSecond=" + arrivalPerSecond +
+                    ", sliceHoldSeconds=" + sliceHoldSeconds +
+                    ", maxThreads=" + maxThreads +
+                    ", capacityPerSecond=" + capacityPerSecond +
+                    ", backlogPerMinute=" + backlogPerMinute +
+                    ", estimatedRetainedMb=" + estimatedRetainedMb +
+                    ", estimatedRetainedKbPerQueuedSlice=" + estimatedRetainedKbPerQueuedSlice +
+                    '}';
+        }
     }
 
-    public record OomCaseResult(
-            List<String> incidentSteps,
-            SchedulerPressure schedulerPressure,
-            TriggerPressure triggerPressure,
-            List<String> diagnosisSteps,
-            List<String> diagnosisCommands,
-            List<String> fixes
-    ) {
+    public static final class TriggerPressure {
+
+        private final int arrivalPerSecond;
+        private final int maxThreads;
+        private final int callbackSeconds;
+        private final double capacityPerSecond;
+        private final double backlogPerMinute;
+        private final double estimatedRetainedMbPerMinute;
+        private final int estimatedRetainedKbPerTask;
+
+        public TriggerPressure(int arrivalPerSecond,
+                               int maxThreads,
+                               int callbackSeconds,
+                               double capacityPerSecond,
+                               double backlogPerMinute,
+                               double estimatedRetainedMbPerMinute,
+                               int estimatedRetainedKbPerTask) {
+            this.arrivalPerSecond = arrivalPerSecond;
+            this.maxThreads = maxThreads;
+            this.callbackSeconds = callbackSeconds;
+            this.capacityPerSecond = capacityPerSecond;
+            this.backlogPerMinute = backlogPerMinute;
+            this.estimatedRetainedMbPerMinute = estimatedRetainedMbPerMinute;
+            this.estimatedRetainedKbPerTask = estimatedRetainedKbPerTask;
+        }
+
+        public int arrivalPerSecond() {
+            return arrivalPerSecond;
+        }
+
+        public int maxThreads() {
+            return maxThreads;
+        }
+
+        public int callbackSeconds() {
+            return callbackSeconds;
+        }
+
+        public double capacityPerSecond() {
+            return capacityPerSecond;
+        }
+
+        public double backlogPerMinute() {
+            return backlogPerMinute;
+        }
+
+        public double estimatedRetainedMbPerMinute() {
+            return estimatedRetainedMbPerMinute;
+        }
+
+        public int estimatedRetainedKbPerTask() {
+            return estimatedRetainedKbPerTask;
+        }
+
+        @Override
+        public String toString() {
+            return "TriggerPressure{" +
+                    "arrivalPerSecond=" + arrivalPerSecond +
+                    ", maxThreads=" + maxThreads +
+                    ", callbackSeconds=" + callbackSeconds +
+                    ", capacityPerSecond=" + capacityPerSecond +
+                    ", backlogPerMinute=" + backlogPerMinute +
+                    ", estimatedRetainedMbPerMinute=" + estimatedRetainedMbPerMinute +
+                    ", estimatedRetainedKbPerTask=" + estimatedRetainedKbPerTask +
+                    '}';
+        }
+    }
+
+    public static final class OomCaseResult {
+
+        private final XtimerRuntimeProfile runtimeProfile;
+        private final List<String> incidentSteps;
+        private final SchedulerPressure schedulerPressure;
+        private final TriggerPressure triggerPressure;
+        private final List<String> diagnosisSteps;
+        private final List<String> diagnosisCommands;
+        private final List<String> fixes;
+
+        public OomCaseResult(XtimerRuntimeProfile runtimeProfile,
+                             List<String> incidentSteps,
+                             SchedulerPressure schedulerPressure,
+                             TriggerPressure triggerPressure,
+                             List<String> diagnosisSteps,
+                             List<String> diagnosisCommands,
+                             List<String> fixes) {
+            this.runtimeProfile = runtimeProfile;
+            this.incidentSteps = incidentSteps;
+            this.schedulerPressure = schedulerPressure;
+            this.triggerPressure = triggerPressure;
+            this.diagnosisSteps = diagnosisSteps;
+            this.diagnosisCommands = diagnosisCommands;
+            this.fixes = fixes;
+        }
+
+        public XtimerRuntimeProfile runtimeProfile() {
+            return runtimeProfile;
+        }
+
+        public List<String> incidentSteps() {
+            return incidentSteps;
+        }
+
+        public SchedulerPressure schedulerPressure() {
+            return schedulerPressure;
+        }
+
+        public TriggerPressure triggerPressure() {
+            return triggerPressure;
+        }
+
+        public List<String> diagnosisSteps() {
+            return diagnosisSteps;
+        }
+
+        public List<String> diagnosisCommands() {
+            return diagnosisCommands;
+        }
+
+        public List<String> fixes() {
+            return fixes;
+        }
     }
 }

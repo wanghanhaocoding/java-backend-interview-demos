@@ -7,22 +7,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CpuHotSpotPreviewTest {
 
     @Test
-    void shouldPreviewBusySpinScenario() {
-        BusySpinScheduleScannerDemo.ScanPreview preview = BusySpinScheduleScannerDemo.previewScenario();
+    void shouldPreviewXtimerEmptyScanScenario() {
+        XtimerEmptyScanCpuDemo.ScanPreview preview = XtimerEmptyScanCpuDemo.previewScenario();
 
-        assertThat(preview.hotThreadName()).isEqualTo(BusySpinScheduleScannerDemo.HOT_THREAD_NAME);
-        assertThat(preview.bucketCount()).isEqualTo(96);
-        assertThat(preview.emptyScanIterations()).isGreaterThan(10_000);
-        assertThat(preview.payloadChecks()).isGreaterThan(1_000);
+        assertThat(preview.hotThreadName()).isEqualTo(XtimerEmptyScanCpuDemo.HOT_THREAD_NAME);
+        assertThat(preview.sliceKeyCount()).isEqualTo(10);
+        assertThat(preview.emptyScanCalls()).isGreaterThan(20_000);
+        assertThat(preview.fallbackChecks()).isGreaterThan(1_000);
     }
 
     @Test
-    void shouldPreviewRetryStormScenario() {
-        AsyncRetryStormCpuDemo.RetryStormPreview preview = AsyncRetryStormCpuDemo.previewScenario();
+    void shouldPreviewXtimerFallbackStormScenario() {
+        XtimerFallbackStormCpuDemo.FallbackStormPreview preview = XtimerFallbackStormCpuDemo.previewScenario();
 
-        assertThat(preview.hotThreadName()).isEqualTo(AsyncRetryStormCpuDemo.HOT_THREAD_NAME);
+        assertThat(preview.hotThreadName()).isEqualTo(XtimerFallbackStormCpuDemo.HOT_THREAD_NAME);
         assertThat(preview.totalAttempts()).isEqualTo(9_000);
-        assertThat(preview.hottestJobAttempts()).isGreaterThan(2_500);
-        assertThat(preview.jobAttempts()).hasSize(3);
+        assertThat(preview.hottestBucketAttempts()).isGreaterThan(2_500);
+        assertThat(preview.bucketAttempts()).hasSize(3);
     }
 }

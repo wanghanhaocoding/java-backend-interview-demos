@@ -9,6 +9,9 @@ target/
 **/.git.embedded-backup/
 *.iml
 *.log
+*.hprof
 .DS_Store
+lab-output/
+**/lab-output/
 redis-lock-demo/Redis-x64-5.0.14.1/
 redis-lock-demo/Redis-x64-5.0.14.1.zip

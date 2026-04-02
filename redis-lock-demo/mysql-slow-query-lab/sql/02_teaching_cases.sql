@@ -1,4 +1,4 @@
-USE slow_demo;
+USE xtimer_slow_demo;
 
 -- =========================
 -- 0. 先验证 slow log 是否真的生效
@@ -12,40 +12,34 @@ SHOW VARIABLES LIKE 'log_output';
 SELECT SLEEP(0.3);
 
 -- =========================
--- 1. 案例一：索引列上套函数
+-- 1. 案例一：对 run_timer 做函数计算
 -- =========================
 
-SELECT 'case-1 bad-sql: function on indexed column' AS step;
+SELECT 'case-1 bad-sql: function on indexed run_timer' AS step;
 
 EXPLAIN ANALYZE
-SELECT id, user_id, status, created_at
-FROM orders
-WHERE DATE(created_at) = '2025-03-01'
-ORDER BY created_at DESC
-LIMIT 20;
-
-SELECT 'case-1 better-sql: rewrite to range condition' AS step;
-
-EXPLAIN ANALYZE
-SELECT id, user_id, status, created_at
-FROM orders
-WHERE created_at >= '2025-03-01 00:00:00'
-  AND created_at < '2025-03-02 00:00:00'
-ORDER BY created_at DESC
-LIMIT 20;
-
--- =========================
--- 2. 案例二：WHERE + ORDER BY 缺联合索引
--- =========================
-
-SELECT 'case-2 before-fix: missing composite index for status + amount' AS step;
-
-EXPLAIN ANALYZE
-SELECT id, user_id, amount, created_at
-FROM orders
-WHERE status = 'PAID'
-ORDER BY amount DESC
+SELECT task_id, timer_id, run_timer, status
+FROM timer_task
+WHERE FROM_UNIXTIME(run_timer / 1000, '%Y-%m-%d %H:%i') = '2025-03-05 10:15'
+ORDER BY run_timer DESC
 LIMIT 50;
+
+SELECT 'case-1 better-sql: rewrite to pure range condition' AS step;
+
+EXPLAIN ANALYZE
+SELECT task_id, timer_id, run_timer, status
+FROM timer_task
+WHERE run_timer >= UNIX_TIMESTAMP('2025-03-05 10:15:00') * 1000
+  AND run_timer < UNIX_TIMESTAMP('2025-03-05 10:16:00') * 1000
+ORDER BY run_timer DESC
+LIMIT 50;
+
+-- =========================
+-- 2. 案例二：xtimer fallback 查询缺联合索引
+-- 对齐 TriggerTimerTask.getTasksByTime(...) 在 Redis 异常时调用的
+-- TaskMapper.getTasksByTimeRange(startTime, endTime - 1, TaskStatus.NotRun)
+-- 这里额外补 ORDER BY run_timer LIMIT 500，模拟线上止血时的有序、限量回扫
+-- =========================
 
 SET @drop_idx_sql = (
     SELECT IF(
@@ -53,81 +47,133 @@ SET @drop_idx_sql = (
             SELECT 1
             FROM information_schema.statistics
             WHERE table_schema = DATABASE()
-              AND table_name = 'orders'
-              AND index_name = 'idx_status_amount'
+              AND table_name = 'timer_task'
+              AND index_name = 'idx_status_run_timer'
         ),
-        'ALTER TABLE orders DROP INDEX idx_status_amount',
-        'SELECT ''idx_status_amount not exists, skip drop'''
+        'ALTER TABLE timer_task DROP INDEX idx_status_run_timer',
+        'SELECT ''idx_status_run_timer not exists, skip drop'''
     )
 );
 PREPARE drop_stmt FROM @drop_idx_sql;
 EXECUTE drop_stmt;
 DEALLOCATE PREPARE drop_stmt;
 
-ALTER TABLE orders ADD INDEX idx_status_amount (status, amount);
-ANALYZE TABLE orders;
-
-SELECT 'case-2 after-fix: same sql after adding idx_status_amount(status, amount)' AS step;
+SELECT 'case-2 before-fix: TriggerTimerTask fallback query without idx_status_run_timer' AS step;
 
 EXPLAIN ANALYZE
-SELECT id, user_id, amount, created_at
-FROM orders
-WHERE status = 'PAID'
-ORDER BY amount DESC
-LIMIT 50;
+SELECT task_id, timer_id, run_timer, status
+FROM timer_task
+WHERE status = 0
+  AND run_timer >= UNIX_TIMESTAMP('2025-03-05 10:15:00') * 1000
+  AND run_timer <= UNIX_TIMESTAMP('2025-03-05 10:15:59') * 1000
+ORDER BY run_timer
+LIMIT 500;
 
--- =========================
--- 3. 案例三：LIKE 前导百分号
--- =========================
+ALTER TABLE timer_task ADD INDEX idx_status_run_timer (status, run_timer);
+ANALYZE TABLE timer_task;
 
-SELECT 'case-3 bad-sql: leading wildcard like' AS step;
-
-EXPLAIN ANALYZE
-SELECT id, user_id, remark, created_at
-FROM orders
-WHERE remark LIKE '%VIP%'
-ORDER BY created_at DESC
-LIMIT 30;
-
-SELECT 'case-3 compare-sql: prefix like' AS step;
+SELECT 'case-2 after-fix: TriggerTimerTask fallback query with idx_status_run_timer(status, run_timer)' AS step;
 
 EXPLAIN ANALYZE
-SELECT id, user_id, remark, created_at
-FROM orders
-WHERE remark LIKE 'VIP%'
-ORDER BY created_at DESC
-LIMIT 30;
+SELECT task_id, timer_id, run_timer, status
+FROM timer_task
+WHERE status = 0
+  AND run_timer >= UNIX_TIMESTAMP('2025-03-05 10:15:00') * 1000
+  AND run_timer <= UNIX_TIMESTAMP('2025-03-05 10:15:59') * 1000
+ORDER BY run_timer
+LIMIT 500;
 
 -- =========================
--- 4. 案例四：隐式类型转换
+-- 3. 案例三：执行去重查询缺联合索引
+-- 对齐 ExecutorWorker.work(timerIDUnixKey) 中的
+-- taskMapper.getTasksByTimerIdUnix(timerId, runTimer)
 -- =========================
 
-SELECT 'case-4 good-sql: column type and parameter type consistent' AS step;
+SET @drop_dup_idx_sql = (
+    SELECT IF(
+        EXISTS(
+            SELECT 1
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = 'timer_task'
+              AND index_name = 'idx_timer_id_run_timer'
+        ),
+        'ALTER TABLE timer_task DROP INDEX idx_timer_id_run_timer',
+        'SELECT ''idx_timer_id_run_timer not exists, skip drop'''
+    )
+);
+PREPARE drop_dup_stmt FROM @drop_dup_idx_sql;
+EXECUTE drop_dup_stmt;
+DEALLOCATE PREPARE drop_dup_stmt;
 
-EXPLAIN
+SET @sample_run_timer = (
+    SELECT run_timer
+    FROM timer_task
+    WHERE timer_id = 1024
+    ORDER BY run_timer
+    LIMIT 1
+);
+
+SELECT 'case-3 before-fix: ExecutorWorker duplicate check without idx_timer_id_run_timer' AS step;
+
+EXPLAIN ANALYZE
 SELECT *
-FROM users_demo
-WHERE phone = '13800000003';
+FROM timer_task
+WHERE timer_id = 1024
+  AND run_timer = @sample_run_timer;
 
-SELECT 'case-4 risky-sql: compare varchar column with numeric literal' AS step;
+ALTER TABLE timer_task ADD INDEX idx_timer_id_run_timer (timer_id, run_timer);
+ANALYZE TABLE timer_task;
 
-EXPLAIN
+SELECT 'case-3 after-fix: ExecutorWorker duplicate check with idx_timer_id_run_timer(timer_id, run_timer)' AS step;
+
+EXPLAIN ANALYZE
 SELECT *
-FROM users_demo
-WHERE phone = 13800000003;
+FROM timer_task
+WHERE timer_id = 1024
+  AND run_timer = @sample_run_timer;
 
 -- =========================
--- 5. 观察热点 SQL 摘要
+-- 4. 案例四：启用定时器扫描缺联合索引
+-- 对齐 TimerMapper.getTimersByStatus(status) 的平台检索扩展版
 -- =========================
 
-SELECT
-    DIGEST_TEXT,
-    COUNT_STAR,
-    ROUND(SUM_TIMER_WAIT / 1000000000000, 2) AS total_sec,
-    ROUND(AVG_TIMER_WAIT / 1000000000, 2) AS avg_ms,
-    SUM_ROWS_EXAMINED,
-    SUM_ROWS_SENT
-FROM performance_schema.events_statements_summary_by_digest
-WHERE SCHEMA_NAME = 'slow_demo'
-ORDER BY AVG_TIMER_WAIT DESC
-LIMIT 10;
+SET @drop_timer_idx_sql = (
+    SELECT IF(
+        EXISTS(
+            SELECT 1
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = 'xtimer'
+              AND index_name = 'idx_status_app_modify_time'
+        ),
+        'ALTER TABLE xtimer DROP INDEX idx_status_app_modify_time',
+        'SELECT ''idx_status_app_modify_time not exists, skip drop'''
+    )
+);
+PREPARE drop_timer_stmt FROM @drop_timer_idx_sql;
+EXECUTE drop_timer_stmt;
+DEALLOCATE PREPARE drop_timer_stmt;
+
+SELECT 'case-4 before-fix: getTimersByStatus-style scan without idx_status_app_modify_time' AS step;
+
+EXPLAIN ANALYZE
+SELECT timer_id, app, status, modify_time
+FROM xtimer
+WHERE status = 2
+  AND app = 'treasury-center'
+ORDER BY modify_time DESC
+LIMIT 100;
+
+ALTER TABLE xtimer ADD INDEX idx_status_app_modify_time (status, app, modify_time);
+ANALYZE TABLE xtimer;
+
+SELECT 'case-4 after-fix: getTimersByStatus-style scan with idx_status_app_modify_time(status, app, modify_time)' AS step;
+
+EXPLAIN ANALYZE
+SELECT timer_id, app, status, modify_time
+FROM xtimer
+WHERE status = 2
+  AND app = 'treasury-center'
+ORDER BY modify_time DESC
+LIMIT 100;

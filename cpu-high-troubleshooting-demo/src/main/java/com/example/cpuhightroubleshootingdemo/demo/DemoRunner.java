@@ -17,21 +17,21 @@ public class DemoRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        CpuHighTroubleshootingDemoService.BusySpinCaseResult busySpinCase =
-                cpuHighTroubleshootingDemoService.scheduleCenterBusySpinCase();
-        printTitle("1. ScheduleCenter 空转扫描把 CPU 打高");
-        busySpinCase.steps().forEach(System.out::println);
-        System.out.println("signals = " + busySpinCase.signals());
-        System.out.println("commands = " + busySpinCase.commands());
-        System.out.println("fixes = " + busySpinCase.fixes());
+        CpuHighTroubleshootingDemoService.XtimerEmptyScanCaseResult emptyScanCase =
+                cpuHighTroubleshootingDemoService.xtimerEmptyScanCase();
+        printTitle("1. xtimer 空 minuteBucketKey 扫描把 CPU 打高");
+        emptyScanCase.steps().forEach(System.out::println);
+        System.out.println("signals = " + emptyScanCase.signals());
+        System.out.println("commands = " + emptyScanCase.commands());
+        System.out.println("fixes = " + emptyScanCase.fixes());
 
-        CpuHighTroubleshootingDemoService.RetryStormCaseResult retryStormCase =
-                cpuHighTroubleshootingDemoService.asyncJobRetryStormCase();
-        printTitle("2. AsyncJobCenter 失败重试风暴");
-        retryStormCase.steps().forEach(System.out::println);
-        System.out.println("jobAttempts = " + retryStormCase.jobAttempts());
-        System.out.println("commands = " + retryStormCase.commands());
-        System.out.println("fixes = " + retryStormCase.fixes());
+        CpuHighTroubleshootingDemoService.XtimerFallbackStormCaseResult fallbackStormCase =
+                cpuHighTroubleshootingDemoService.xtimerFallbackStormCase();
+        printTitle("2. xtimer DB fallback 查询风暴");
+        fallbackStormCase.steps().forEach(System.out::println);
+        System.out.println("bucketAttempts = " + fallbackStormCase.bucketAttempts());
+        System.out.println("commands = " + fallbackStormCase.commands());
+        System.out.println("fixes = " + fallbackStormCase.fixes());
 
         CpuHighTroubleshootingDemoService.DiagnosticPlaybook playbook =
                 cpuHighTroubleshootingDemoService.diagnosisPlaybook();

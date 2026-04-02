@@ -1,3 +1,4 @@
+-- 止血动作后复盘：确认 xtimer fallback / dedupe SQL 是否还停留在热点 digest 里
 SELECT
     DIGEST_TEXT,
     COUNT_STAR,
@@ -6,6 +7,6 @@ SELECT
     SUM_ROWS_EXAMINED,
     SUM_ROWS_SENT
 FROM performance_schema.events_statements_summary_by_digest
-WHERE SCHEMA_NAME = 'slow_demo'
+WHERE SCHEMA_NAME = 'xtimer_slow_demo'
 ORDER BY AVG_TIMER_WAIT DESC
 LIMIT 10;

@@ -1,47 +1,43 @@
 # cpu-high-troubleshooting-demo
 
-一个专门讲**线上 CPU 标高排查**的教学项目。
+一个专门讲 **xtimer / ScheduleCenter 线上 CPU 标高排查** 的教学项目。
 
-这个 demo 不做泛泛的 JVM 八股，而是直接贴你简历里的两条主线来讲：
+这版不再混用 `AsyncJobCenter` 案例，而是全部对齐你简历中的第一个项目：
 
-1. `ScheduleCenter` 的空转扫描为什么会把 CPU 打高
-2. `AsyncJobCenter` 的失败重试风暴为什么会制造热点线程
-3. 线上 CPU 高时，怎么从 `top -Hp` 一路定位到 Java 代码
-4. 排查后先怎么止血，再怎么做长期治理
-
----
+- 项目：`ScheduleCenter 定时调度中心`
+- 真实代码：`bitstorm-svr-xtimer`
+- 真实角色：`SchedulerWorker / SchedulerTask / TriggerWorker / TriggerTimerTask / TaskCache / TaskMapper`
 
 ## 这个项目讲什么
 
 对应代码：
 
 - `cpu/CpuHighTroubleshootingDemoService.java`
-- `cpu/BusySpinScheduleScannerDemo.java`
-- `cpu/AsyncRetryStormCpuDemo.java`
+- `cpu/XtimerEmptyScanCpuDemo.java`
+- `cpu/XtimerFallbackStormCpuDemo.java`
 
-会直接演示：
+会直接演示两类更贴真实项目的 CPU 高场景：
 
-- `ScheduleCenter` 的 scanner 线程空扫 bucket，形成 busy spin
-- `AsyncJobCenter` 失败后立即重试，少量 jobId 高频空转
-- `top -Hp -> printf '%x' -> jstack -> async-profiler` 的排查路径
-- 为什么 CPU 高不一定等于流量真高，也可能是循环模型出了问题
-
----
+1. `TriggerWorker / TriggerTimerTask` 对空 `minuteBucketKey` 持续做 `rangeByScore`，空扫把 CPU 打高
+2. Redis 取数异常后持续走 `taskMapper.getTasksByTimeRange` 做 DB fallback，查询风暴把 CPU 打高
 
 ## 你最先看这 4 个文件就够了
 
-1. `docs/schedule-center-busy-spin-case.md`
-2. `docs/async-job-retry-storm-case.md`
+1. `docs/xtimer-empty-scan-case.md`
+2. `docs/xtimer-fallback-query-storm-case.md`
 3. `docs/diagnosis-playbook.md`
 4. `docs/interview-cheatsheet.md`
 
 如果你想再结合代码理解，可以继续看：
 
 - `cpu/CpuHighTroubleshootingDemoService.java`
-- `cpu/BusySpinScheduleScannerDemo.java`
-- `cpu/AsyncRetryStormCpuDemo.java`
+- `cpu/XtimerEmptyScanCpuDemo.java`
+- `cpu/XtimerFallbackStormCpuDemo.java`
 
----
+如果你要在 Linux 机器上手工演练，直接看这 2 个 runbook：
+
+- `docs/linux-xtimer-empty-scan-runbook.md`
+- `docs/linux-xtimer-fallback-query-storm-runbook.md`
 
 ## 这个项目怎么学
 
@@ -49,11 +45,9 @@
 
 1. `CpuHighTroubleshootingDemoService`
 2. `demo/DemoRunner.java`
-3. `BusySpinScheduleScannerDemo`
-4. `AsyncRetryStormCpuDemo`
+3. `XtimerEmptyScanCpuDemo`
+4. `XtimerFallbackStormCpuDemo`
 5. 两个测试类
-
----
 
 ## 如何运行
 
@@ -63,11 +57,9 @@ mvn spring-boot:run
 
 启动后会顺序打印：
 
-1. `ScheduleCenter` 空转扫描案例
-2. `AsyncJobCenter` 重试风暴案例
-3. 一套通用 CPU 标高排查 SOP
-
----
+1. xtimer 空 minuteBucketKey 扫描热点
+2. xtimer DB fallback 查询风暴热点
+3. 一套贴 xtimer 的 CPU 标高排查 SOP
 
 ## 如何运行测试
 
@@ -80,8 +72,6 @@ mvn test
 - `CpuHighTroubleshootingDemoTest`
 - `CpuHotSpotPreviewTest`
 
----
-
 ## 如何本机真实复现热点线程
 
 ### 1. 先编译
@@ -90,16 +80,16 @@ mvn test
 mvn -q -DskipTests compile
 ```
 
-### 2. 跑 ScheduleCenter 空转扫描热点
+### 2. 跑 xtimer 空扫热点
 
 ```bash
-java -cp target/classes com.example.cpuhightroubleshootingdemo.cpu.BusySpinScheduleScannerDemo --run 20
+java -cp target/classes com.example.cpuhightroubleshootingdemo.cpu.XtimerEmptyScanCpuDemo --run 20
 ```
 
-### 3. 跑 AsyncJobCenter 重试风暴热点
+### 3. 跑 xtimer DB fallback 查询风暴热点
 
 ```bash
-java -cp target/classes com.example.cpuhightroubleshootingdemo.cpu.AsyncRetryStormCpuDemo --run 20
+java -cp target/classes com.example.cpuhightroubleshootingdemo.cpu.XtimerFallbackStormCpuDemo --run 20
 ```
 
 上面两个命令都会打印当前 `pid`，你可以在 Linux 机器上另开终端继续执行：
@@ -116,18 +106,6 @@ jstack <pid> | grep -A 20 <nid>
 ./profiler.sh -e cpu -d 15 -f cpu.html <pid>
 ```
 
----
-
 ## 面试里怎么说最稳
 
-### 1. 线上 CPU 高先看什么？
-
-> 我不会先猜 GC 或机器太小，而是先确认是不是 Java 进程本身在高，再找出最热线程，最后把线程栈和业务日志对应起来。
-
-### 2. 什么样的代码最容易把 CPU 打高？
-
-> 最常见的不是“业务量真的大”，而是空转循环、无退避重试、过度序列化、锁竞争和线程池模型不合理。
-
-### 3. 怎么把这个问题讲得像真实项目？
-
-> 最稳的讲法是挂在具体业务线程上，比如 ScheduleCenter 的 scanner 空扫 bucket，或者 AsyncJobCenter 的 retry dispatcher 立刻重试，把 CPU 打高。这样排查链路和修复动作都会更像真的生产问题。
+> 我会把 CPU 高问题挂在 xtimer 这条真实链路上讲，而不是泛泛说“线程空转”。因为在这个项目里，SchedulerWorker 每秒都在提交 minute bucket 分片，TriggerWorker 内部又会启动 Timer 持续扫描一分钟。如果空 minuteBucketKey 没有及时退避，或者 Redis 抖动后 TriggerTimerTask 一直走 taskMapper.getTasksByTimeRange 做 DB fallback，CPU 很容易先被 Timer 线程和查询构造打高。排查时我先用 `top -Hp` 找热点线程，再用 `jstack` 和火焰图确认是 empty scan 还是 fallback query，最后再结合 queueSize、Redis RT、DB RT 和 callback RT 收敛根因。

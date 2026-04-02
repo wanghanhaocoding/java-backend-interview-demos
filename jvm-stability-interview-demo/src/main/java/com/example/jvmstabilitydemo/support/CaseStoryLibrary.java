@@ -16,7 +16,7 @@ public final class CaseStoryLibrary {
     }
 
     public static String deadlockSummary() {
-        return "任务执行线程和补偿线程对任务锁、回执锁的获取顺序不一致，"
+        return "xtimer 里执行回调线程和停用定时器线程对 timer_task、xtimer 两类资源的加锁顺序不一致，"
             + "并发时形成环形等待。通过线程 dump 发现 Java 级死锁，最终通过统一锁顺序和 tryLock 降风险。";
     }
 }

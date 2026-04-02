@@ -1,42 +1,50 @@
 # schedule-center-fullgc-demo
 
-一个专门讲 `ScheduleCenter` 频繁 `Full GC` 的教学项目。
+一个专门讲 `ScheduleCenter / xtimer` 频繁 `Full GC` 的教学项目。
 
-这个 demo 不把问题讲成抽象 JVM 八股，而是直接对齐你真实项目里的调度中心链路：
+这次不是泛泛讲“调度系统容易 Full GC”，而是直接对齐你简历第一个项目和真实代码：
 
-1. 任务先由迁移模块写入 Redis `ZSet`
-2. 调度层按分钟和 `bucket` 分片
-3. 多台节点每秒竞争分布式锁
-4. 抢到锁的节点持续扫描这一分钟窗口
-5. 到期任务再异步投递到执行模块
+- 简历项目：`ScheduleCenter 定时调度中心`
+- 真实代码：`bitstorm-svr-xtimer`
+- 真实链路：`MigratorWorker -> SchedulerWorker -> SchedulerTask -> TriggerWorker -> TriggerTimerTask -> TriggerPoolTask`
 
----
-
-## 这个项目讲什么
+## 这个 demo 讲什么
 
 对应代码：
 
 - `fullgc/ScheduleCenterFullGcDemoService.java`
 
-会直接演示：
+这版会直接把真实项目里的关键事实摊开：
 
-- 为什么 `5` 个 bucket 再加“当前分钟 + 上一分钟补偿”会形成每秒 `10` 个分片扫描任务
-- 为什么单个分片扫描如果持续接近 `60s`，就会把并发需求抬到 `600`
-- 为什么 `schedulerPool.max=100`、`queueCapacity=99999` 这种配置更容易先打出 `Full GC`
-- 排查时应该先看线程池堆积、Redis/DB RT、GC 指标，再回到代码链路
+1. `SchedulerWorker` 使用 `@Scheduled(fixedRate = 1000)` 每秒调度一次
+2. 每秒会同时提交 `5 个 bucket * 2 个分钟窗口 = 10` 个分片任务
+3. `SchedulerTask.asyncHandleSlice` 抢到锁后，会同步进入 `TriggerWorker.work`
+4. `TriggerWorker.work` 用 `Timer + CountDownLatch` 扫完整个分钟窗口，线程会挂住接近 `60s`
+5. `schedulerPool.maxPoolSize=100`、`queueCapacity=99999`
+6. `TriggerTimerTask` 每秒做一次 Redis `rangeByScore`，异常时走 `taskMapper.getTasksByTimeRange` 做 DB fallback
 
----
+## 为什么这更像你的真实项目
+
+因为你简历里的说法和 xtimer 代码是对得上的：
+
+- `Redis 分片 + 分布式锁`
+- `MySQL + Redis 二级存储`
+- `按触发时间分片`
+- `滑动时间窗增量扫描`
+- `提前预取与缓存即将触发任务`
+- `线程池、慢 SQL、缓存命中、稳定性治理`
+
+这版 demo 不再只说抽象的“预取过大”，而是把 `fixedRate=1s`、`5 bucket`、`上一分钟补偿`、`queueCapacity=99999` 和 `TriggerWorker` 挂住近一分钟这些真实细节都写进去。
 
 ## 这个项目怎么学
 
 建议按这个顺序看：
 
-1. `ScheduleCenterFullGcDemoService`
+1. `fullgc/ScheduleCenterFullGcDemoService.java`
 2. `docs/full-gc-case.md`
-3. `demo/DemoRunner.java`
-4. `ScheduleCenterFullGcDemoTest`
-
----
+3. `docs/linux-server-full-gc-lab.md`
+4. `demo/DemoRunner.java`
+5. `ScheduleCenterFullGcDemoTest`
 
 ## 如何运行
 
@@ -46,12 +54,14 @@ mvn spring-boot:run
 
 启动后会顺序打印：
 
-1. 故障是怎么出现的
-2. 为什么先表现成 `Full GC`
-3. 排查时看哪些指标
-4. 怎么止血和怎么长期治理
+1. xtimer 真实链路里 Full GC 是怎么出现的
+2. 关键配置和压力口径
+3. 排查时应该看哪些命令和指标
+4. 先止血和长期治理怎么拆开说
 
----
+## Linux 服务器手工 runbook
+
+- `docs/linux-server-full-gc-lab.md`
 
 ## 如何运行测试
 
@@ -63,8 +73,6 @@ mvn test
 
 - `ScheduleCenterFullGcDemoTest`
 
----
-
 ## 面试里怎么说最稳
 
-> 我这个定时调度中心更容易先出现的不是直接 OOM，而是 Full GC 频繁。因为它的任务先迁移到 Redis ZSet，调度层按分钟和 bucket 分片，多台节点每秒都会去竞争当前分钟和上一分钟的分片锁。问题在于，抢到锁后不是很快结束，而是会持续扫描接近一分钟。如果线程池吞吐跟不上，分片扫描任务会在线程池和队列里积压，再叠加 Redis 查询结果、DB fallback 结果、任务对象和回调上下文，很多对象会跨过多轮 Minor GC 晋升到老年代，先表现成 Full GC 频繁、调度 RT 抖动和触发延迟升高。排查时我会先看线程池堆积、Redis/DB RT 和 GC 指标，再定位到是分片扫描生命周期过长、队列过大、缺少背压。处理上先限流、降批次、扩容止血，后面再改线程池和扫描模型。 
+> 我这个定时调度中心里，实际更先暴露出来的通常不是直接 OOM，而是 Full GC 频繁。因为在真实 xtimer 里，SchedulerWorker 每秒都会把当前分钟和上一分钟补偿的 5 个 bucket 全部提交给 schedulerPool，但抢到锁后的 TriggerWorker.work 会持续扫完整个分钟窗口，单个分片生命周期接近一分钟。如果线程池吞吐跟不上，分片任务就会在线程池和超大队列里积压，再叠加 Redis 查询、DB fallback、任务对象构造和回调上下文，这些对象很容易晋升到老年代，先表现成 Full GC 频繁、调度 RT 抖动和任务触发延迟升高。排查时我一般先看 GC 指标、线程池队列和 Redis/DB RT，再确认是长生命周期扫描任务、大队列和缺少背压共同导致的。处理上先缩批次、限并发、扩容止血，长期再把队列改成有界、控制 fallback 结果集并增强背压和监控。 

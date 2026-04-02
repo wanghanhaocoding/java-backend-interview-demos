@@ -1,81 +1,103 @@
-# OOM 案例：ScheduleCenter 双线程池积压放大后把堆打满
+# OOM 案例：bitstorm-svr-xtimer 在双深队列积压后把堆打满
 
-## 1. 这个问题是怎么来的
+## 1. 这个问题为什么不是“简单内存泄漏”
 
-它和 `Full GC` 版本不是两套完全独立的问题，而是同一条链路继续恶化。
+它和普通泄漏最大的区别是：
 
-主链路还是：
+- 对象不是永久不可回收
+- 但对象来得太快、活得太久、流得太慢
 
-1. 任务先被迁移到 Redis `ZSet`
-2. 调度层按分钟和 `bucket` 分片抢锁
-3. 抢到锁的节点持续扫描近一分钟
-4. 到期任务交给 trigger 线程池发起执行或回调
+xtimer 里的关键链路是：
 
-如果这时再叠加两件事，问题就会明显升级：
+1. `SchedulerWorker` 每秒提交 `10` 个分片任务
+2. `SchedulerTask.asyncHandleSlice` 抢锁后同步进入 `TriggerWorker.work`
+3. `TriggerWorker.work` 会把 scheduler 线程挂住接近 `60s`
+4. `TriggerTimerTask` 每秒扫描 Redis `rangeByScore`
+5. 扫到的任务再交给 `TriggerPoolTask` 异步投递
+6. Redis 异常时走 `taskMapper.getTasksByTimeRange`
 
-- 回调下游 RT 变慢
-- Redis 异常导致 DB fallback 查询结果膨胀
+只要“提交速度 > 消费速度”，对象就会一直积压在两个位置：
 
-这时不只是 `schedulerPool` 堵，`triggerPool` 也开始堵。
+- `schedulerPool` 队列
+- `triggerPool` 队列
 
-## 2. 为什么这是积压型 OOM
+## 2. 用 xtimer 真实参数把压力算出来
 
-因为对象不是泄漏，而是“流不出去”：
+### schedulerPool 这一层
 
-- `schedulerPool` 队列里堆的是待执行分片扫描
-- `triggerPool` 队列里堆的是待执行任务投递和回调
-- 堆里同时还保留了 `Future`、集合对象、任务对象、HTTP 请求体和上下文
-- DB fallback 放大的结果集会让单次扫描持有的对象更多
+真实口径：
 
-只要提交速率长期高于消费速率，堆内对象总量就会持续抬升。
+- `5` 个 bucket
+- 每秒两轮：上一分钟补偿 + 当前分钟实时
+- 所以每秒提交分片数 = `10`
+- 单个分片持有时间约 = `60s`
+- `schedulerPool.maxPoolSize = 100`
 
-## 3. 用一个可讲清楚的量化口径
+那么：
 
-这个 demo 用的是一组很适合面试说明的数字：
+- scheduler 稳态并发需求 = `10 * 60 = 600`
+- 实际处理能力约 = `100 / 60 ≈ 1.67/s`
+- 每分钟净积压约 = `(10 - 1.67) * 60 ≈ 500`
 
-- 调度层每秒提交分片数 = `10`
-- 单个分片平均持有时间 = `60s`
-- `schedulerPool.maxThreads = 100`
-- 调度层实际每秒处理能力约 = `100 / 60 = 1.67`
-- 调度层每分钟净积压约 = `(10 - 1.67) * 60 ≈ 500`
+### triggerPool 这一层
 
-再看 trigger 层：
+为了模拟高峰期，每个活跃分片按平均每秒投递 `12` 个到期任务估算：
 
-- 每个分片平均每秒投递 `12` 个到期任务
 - trigger 到达速率 = `10 * 12 = 120/s`
-- `triggerPool.maxThreads = 100`
-- 平均回调耗时 = `2s`
-- trigger 实际吞吐 = `100 / 2 = 50/s`
+- `triggerPool.maxPoolSize = 100`
+- 假设平均回调耗时 = `2s`
+- trigger 实际处理能力 = `100 / 2 = 50/s`
 - trigger 每分钟净积压 = `(120 - 50) * 60 = 4200`
 
-如果每个待执行回调连同上下文只保守按 `18KB` 算：
+如果每个待执行任务连同上下文按 `18KB` 估算：
 
 - trigger 单分钟新增保留内存约 = `4200 * 18KB ≈ 73.8MB`
 
-再叠加调度队列里分片任务的对象占用，堆很快就会被推高。
+再叠加 schedulerPool 里分片上下文、Redis 结果集、DB fallback 结果集和 Future，很快就会把堆顶高。
 
-## 4. 我是怎么排查的
+## 3. 为什么会先出现 Full GC，再走到 OOM
 
-### 第一步：先看是不是“越跑越多”
+因为这是一个逐步恶化的过程：
 
-我会先看：
+1. 分片任务先堆在 `schedulerPool`
+2. 回调慢了以后，任务对象继续堆到 `triggerPool`
+3. Redis 正常时已经会堆 `TaskModel` 和集合对象
+4. Redis 异常时 DB fallback 结果集更大，对象放大更明显
+5. Young GC 逐渐回不掉这么多存活对象
+6. 对象开始晋升到老年代
+7. 先出现 Full GC 频繁
+8. 再继续恶化，最终才是 OOM
+
+所以它更像：
+
+`Full GC -> Full GC 回收效果差 -> Old 区抬高 -> OOM`
+
+而不是系统一上来就崩。
+
+## 4. 我会怎么排查
+
+### 第一步：先判断是不是积压
+
+看这几个指标：
 
 - `schedulerPool.queueSize`
 - `triggerPool.queueSize`
-- 每分钟提交任务数
-- 每分钟完成任务数
+- 每分钟提交数
+- 每分钟完成数
 
-如果队列持续单向增长，说明是积压，不是瞬时尖峰。
+如果队列持续单向增长，就说明是积压，不是瞬时高峰。
 
-### 第二步：再判断是泄漏还是积压
+### 第二步：再判断是积压还是泄漏
 
-这一步很关键。
+积压型 OOM 的典型特征是：
 
-如果是典型内存泄漏，流量下降后内存通常还回不来；但积压型 OOM 往往有一个特征：
+- 流量下降或回调 RT 恢复后，内存和队列可能部分回落
 
-- 流量或回调 RT 回落后，队列和堆占用也会部分回落
+而典型泄漏往往是：
 
-我会结合下面这些命令看：
+- 负载降下来后，内存还是持续高位
+
+常用命令：
 
 ```bash
 jstat -gcutil <pid> 1000 20
@@ -83,43 +105,43 @@ jcmd <pid> GC.heap_info
 jmap -histo:live <pid>
 ```
 
-如果 Top 对象主要是：
+如果对象直方图里主要是：
 
 - `ArrayList`
 - `FutureTask`
 - 任务 DTO
-- 回调请求对象
+- 回调请求体
 - 大量集合和上下文
 
-同时线程池队列也在涨，那就更像积压放大。
+再配合线程池队列增长，就更像积压放大。
 
-### 第三步：回到异常链路
+### 第三步：专门看 Redis 和 fallback
 
-这里要专门看 Redis 和 fallback：
+这一步在 xtimer 里非常关键：
 
-- Redis 是否有超时或异常
-- DB fallback 是否按时间范围拉出了过大结果集
-- 回调下游 RT 是否把 triggerPool 卡住
+- Redis `rangeByScore` 是否超时或异常
+- `taskMapper.getTasksByTimeRange` 是否在异常路径下拉出了过大结果集
+- 回调下游 RT 是否把 triggerPool 卡死
 
-这一步能帮助你说明：OOM 不是 JVM 自己坏了，而是处理模型已经长期失衡。
+因为这决定了问题是“本来就会积压”，还是“异常路径把积压再放大了一层”。
 
-## 5. 我是怎么解决的
+## 5. 我会怎么处理
 
 ### 先止血
 
-1. 临时扩容节点，快速分散分片扫描压力
-2. 限制 trigger 投递速率，避免回调继续放大积压
-3. 缩小 DB fallback 单次返回上限
-4. 把线程池队列从超大值降成有限值，宁可失败暴露，也不要无限堆积
+1. 扩容节点，先把分片压力摊薄
+2. 控制 trigger 投递速率，避免慢回调继续放大积压
+3. 限制 DB fallback 结果集规模
+4. 把 `queueCapacity=99999` 改成有限长度，让背压提前暴露
 
 ### 再根治
 
-1. 分片抢锁前增加本机负载检查，不让已经饱和的节点继续接任务
-2. 缩短单个分片的生命周期，不要让一个任务近一分钟都不退出
-3. trigger 投递链路做背压和限流
-4. Redis fallback 查询增加更严格条件，避免结果集膨胀
-5. 增加队列、GC、fallback 命中率和 callback RT 的联动监控
+1. 抢锁前增加本机负载检查，不让饱和节点继续接分片
+2. 缩短 `TriggerWorker.work` 这种长生命周期扫描任务
+3. trigger 投递链路增加背压和限流
+4. 给 Redis 异常路径加更严格的 fallback 保护
+5. 联动监控队列长度、GC、fallback 命中率和 callback RT
 
 ## 6. 面试里怎么说
 
-> 这个项目如果继续恶化是可能 OOM 的，但我会强调它不是典型泄漏，而是积压型 OOM。核心原因是分片扫描任务本身很长，外层调度又每秒在提任务，schedulerPool 和 triggerPool 的队列都很大，慢回调和 DB fallback 还会继续放大对象数量。排查时我会先看线程池和 GC，再用对象直方图确认堆里主要是任务对象、集合和回调上下文，而不是某个静态集合无限引用。处理上先扩容和限流止血，再把队列、并发、批次和 fallback 结果集收住。
+> 如果继续恶化，这类问题是可能进一步打到 OOM 的，但它更像积压型 OOM，不是典型代码泄漏。因为在 xtimer 里，外层 SchedulerWorker 每秒都在继续提交分片，而抢到锁后的 TriggerWorker 会把线程挂住近一分钟，导致 schedulerPool 和 triggerPool 的大队列里长期堆积任务对象、集合、Future 和回调上下文。如果 Redis 又异常，TriggerTimerTask 还会走 TaskMapper.getTasksByTimeRange 做 DB fallback，把结果集进一步放大。通常它不会一上来就 OOM，而是先出现 Full GC 越来越频繁、回收效果越来越差，最后老年代才被打满。处理重点不在于单纯加堆，而在于收住任务生产速度、缩短单任务生命周期、限制队列长度，并压住 fallback 放大量。 

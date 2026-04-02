@@ -10,28 +10,44 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 演示两条线程因为锁顺序相反而形成死锁。
+ * 演示 xtimer 执行回调线程与停用定时器线程因为锁顺序相反而形成死锁。
  */
 public class DeadlockDemo {
 
-    private final Lock taskLock = new ReentrantLock();
-    private final Lock receiptLock = new ReentrantLock();
+    private final Lock timerRowLock = new ReentrantLock();
+    private final Lock taskRowLock = new ReentrantLock();
 
     public static void main(String[] args) throws Exception {
+        int holdSeconds = parseHoldSeconds(args);
         DeadlockDemo demo = new DeadlockDemo();
         demo.runDemo();
+        if (holdSeconds > 0) {
+            System.out.println("holding process for " + holdSeconds
+                + " seconds so jstack/jcmd can attach");
+            TimeUnit.SECONDS.sleep(holdSeconds);
+        }
     }
 
     public void runDemo() throws Exception {
         CountDownLatch ready = new CountDownLatch(2);
 
-        Thread taskWorker = new Thread(() -> lockTaskThenReceipt(ready), "task-worker-thread");
-        Thread compensationWorker = new Thread(() -> lockReceiptThenTask(ready), "compensation-worker-thread");
-        taskWorker.setDaemon(true);
-        compensationWorker.setDaemon(true);
+        Thread executorWorker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                lockTaskThenTimer(ready);
+            }
+        }, "xtimer-executor-worker");
+        Thread disableTimerWorker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                lockTimerThenTask(ready);
+            }
+        }, "xtimer-disable-timer-worker");
+        executorWorker.setDaemon(true);
+        disableTimerWorker.setDaemon(true);
 
-        taskWorker.start();
-        compensationWorker.start();
+        executorWorker.start();
+        disableTimerWorker.start();
 
         ready.await(2, TimeUnit.SECONDS);
         Thread.sleep(300);
@@ -52,35 +68,35 @@ public class DeadlockDemo {
         return mxBean.findDeadlockedThreads();
     }
 
-    private void lockTaskThenReceipt(CountDownLatch ready) {
-        taskLock.lock();
+    private void lockTaskThenTimer(CountDownLatch ready) {
+        taskRowLock.lock();
         try {
             ready.countDown();
             sleepSilently(200);
-            receiptLock.lock();
+            timerRowLock.lock();
             try {
-                System.out.println("task worker acquired both locks");
+                System.out.println("executor worker acquired timer_task and xtimer locks");
             } finally {
-                receiptLock.unlock();
+                timerRowLock.unlock();
             }
         } finally {
-            taskLock.unlock();
+            taskRowLock.unlock();
         }
     }
 
-    private void lockReceiptThenTask(CountDownLatch ready) {
-        receiptLock.lock();
+    private void lockTimerThenTask(CountDownLatch ready) {
+        timerRowLock.lock();
         try {
             ready.countDown();
             sleepSilently(200);
-            taskLock.lock();
+            taskRowLock.lock();
             try {
-                System.out.println("compensation worker acquired both locks");
+                System.out.println("disable timer worker acquired xtimer and timer_task locks");
             } finally {
-                taskLock.unlock();
+                taskRowLock.unlock();
             }
         } finally {
-            receiptLock.unlock();
+            timerRowLock.unlock();
         }
     }
 
@@ -106,5 +122,23 @@ public class DeadlockDemo {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static int parseHoldSeconds(String[] args) {
+        for (String arg : args) {
+            if (arg.startsWith("--hold-seconds=")) {
+                String value = arg.substring("--hold-seconds=".length());
+                try {
+                    int holdSeconds = Integer.parseInt(value);
+                    if (holdSeconds < 0) {
+                        throw new IllegalArgumentException("hold-seconds must be >= 0");
+                    }
+                    return holdSeconds;
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("hold-seconds must be an integer", e);
+                }
+            }
+        }
+        return 0;
     }
 }

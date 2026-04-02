@@ -12,7 +12,7 @@
 
 - 想按简历主线看：先看 `schedule-center-*`、`async-job-center-*`、`treasury-*`
 - 想补 Java 后端基础题：先看 `spring-*`、`mysql-lock-mvcc-demo`、`redis-lock-demo`、`mq-cache-idempotency-demo`、`distributed-tx-demo`
-- 想补稳定性和排障表达：先看 `jvm-stability-interview-demo`、`cpu-high-troubleshooting-demo`
+- 想补稳定性和排障表达：先看 `schedule-center-fullgc-demo`、`schedule-center-callback-timeout-demo`、`jvm-stability-interview-demo`、`cpu-high-troubleshooting-demo`
 - 想补服务治理和认证授权：看 `resilience-auth-demo`
 - 想补“可观测性 + 设计模式 + 业务表达”：看 `order-observability-pattern-demo`
 
@@ -27,8 +27,10 @@
 | `mq-cache-idempotency-demo` | MQ 可靠性、缓存一致性、接口幂等 | 补消息、缓存、重复请求时 |
 | `distributed-tx-demo` | 本地事务、Outbox、状态机、补偿、TCC、Saga | 面试里被问分布式事务时 |
 | `resilience-auth-demo` | 限流、熔断、降级、隔离、JWT、RBAC | 补服务治理和认证授权时 |
-| `jvm-stability-interview-demo` | OOM、Full GC、死锁、故障排查表达 | 补 JVM 稳定性案例时 |
-| `cpu-high-troubleshooting-demo` | CPU 标高排查、热点线程定位、止血和长期治理 | 补线上 CPU 故障排查时 |
+| `schedule-center-fullgc-demo` | 贴 `xtimer` 的 Full GC runbook、老年代压力、调度延迟与止血 | 补 ScheduleCenter Full GC 故障案例时 |
+| `schedule-center-callback-timeout-demo` | 贴 `xtimer` 的 callback timeout、triggerPool backlog、schedulerPool 反压链路 | 补 ScheduleCenter 回调超时和线程池饱和案例时 |
+| `jvm-stability-interview-demo` | 贴 `xtimer` 的 OOM、Full GC、死锁、故障排查表达 | 补 ScheduleCenter 稳定性案例时 |
+| `cpu-high-troubleshooting-demo` | 贴 `xtimer` 的 CPU 标高排查、热点线程定位、止血和长期治理 | 补 ScheduleCenter CPU 故障排查时 |
 | `schedule-center-trigger-demo` | ScheduleCenter 的时间索引、分钟分片、滑动时间窗扫描 | 讲调度中心“怎么触发任务”时 |
 | `schedule-center-scaling-demo` | ScheduleCenter 的多机去重、预取、本地队列、双线程池、背压 | 讲调度中心“怎么扩容和抗压”时 |
 | `async-job-center-core-demo` | AsyncJobCenter 的 `server + worker`、三张核心表、任务主链路 | 讲异步任务平台骨架时 |
@@ -57,6 +59,8 @@
 
 - `schedule-center-trigger-demo`
 - `schedule-center-scaling-demo`
+- `schedule-center-fullgc-demo`
+- `schedule-center-callback-timeout-demo`
 - `async-job-center-core-demo`
 - `async-job-center-retry-sharding-demo`
 - `treasury-receipt-state-machine-demo`
@@ -283,20 +287,22 @@
 
 1. `schedule-center-trigger-demo`
 2. `schedule-center-scaling-demo`
-3. `async-job-center-core-demo`
-4. `async-job-center-retry-sharding-demo`
-5. `treasury-receipt-state-machine-demo`
-6. `treasury-plan-collection-demo`
-7. `order-observability-pattern-demo`
-8. `spring-core-demo`
-9. `spring-tx-demo`
-10. `mysql-lock-mvcc-demo`
-11. `redis-lock-demo`
-12. `mq-cache-idempotency-demo`
-13. `distributed-tx-demo`
-14. `jvm-stability-interview-demo`
-15. `cpu-high-troubleshooting-demo`
-16. `resilience-auth-demo`
+3. `schedule-center-fullgc-demo`
+4. `schedule-center-callback-timeout-demo`
+5. `async-job-center-core-demo`
+6. `async-job-center-retry-sharding-demo`
+7. `treasury-receipt-state-machine-demo`
+8. `treasury-plan-collection-demo`
+9. `order-observability-pattern-demo`
+10. `spring-core-demo`
+11. `spring-tx-demo`
+12. `mysql-lock-mvcc-demo`
+13. `redis-lock-demo`
+14. `mq-cache-idempotency-demo`
+15. `distributed-tx-demo`
+16. `jvm-stability-interview-demo`
+17. `cpu-high-troubleshooting-demo`
+18. `resilience-auth-demo`
 
 其中：
 

@@ -1,54 +1,71 @@
-# Full GC 案例：ScheduleCenter 分片扫描任务生命周期过长导致老年代压力抬高
+# Full GC 案例：bitstorm-svr-xtimer 的分钟分片长扫描先把老年代顶高
 
-## 1. 故障是怎么出现的
+## 1. 先把真实项目链路说清楚
 
-这条链路和真实项目一致：
+这个案例直接对齐你简历里的第一个项目 `ScheduleCenter 定时调度中心`，对应真实代码是 `bitstorm-svr-xtimer`。
 
-1. 迁移模块先把未来任务写入 Redis `ZSet`
-2. `key` 形态是 `yyyy-MM-dd HH:mm_{bucket}`
-3. 调度模块每秒扫描“当前分钟 + 上一分钟补偿”
-4. 每个分钟都有 `5` 个 bucket
-5. 抢到分布式锁的节点会持续扫描这一分钟，把到期任务投递到执行模块
+核心链路不是抽象的，而是下面这条：
 
-把这些事实代入后，很容易得到第一层压力：
+1. `MigratorWorker` 负责把未来时间窗任务迁移到 Redis `ZSet`
+2. `TaskCache.GetTableName` 生成 `yyyy-MM-dd HH:mm_{bucket}` 这种分钟分片 key
+3. `SchedulerWorker` 用 `@Scheduled(fixedRate = 1000)` 每秒调度一次
+4. 每次会对 `5` 个 bucket 同时提交“上一分钟补偿 + 当前分钟实时”两轮分片
+5. `SchedulerTask.asyncHandleSlice` 抢到分布式锁后不会立刻结束，而是直接进入 `TriggerWorker.work`
+6. `TriggerWorker.work` 用 `Timer.scheduleAtFixedRate` 每秒驱动一次 `TriggerTimerTask`
+7. `TriggerTimerTask` 每秒对 Redis `rangeByScore` 拉取到期任务，异常时走 `taskMapper.getTasksByTimeRange` 做 DB fallback
+8. 到期任务再交给 `TriggerPoolTask` 异步投递到执行链路
 
-- 每秒新提交分片数 = `5 bucket * 2 分钟窗口 = 10`
-- 单个分片持有时间约 = `60s`
+## 2. 为什么 xtimer 更容易先表现成 Full GC
+
+因为它的第一层矛盾不是“对象永远不释放”，而是“对象活得太久”。
+
+把真实参数代进去：
+
+- `scheduler.bucketsNum = 5`
+- `SchedulerWorker.fixedRate = 1s`
+- 每秒扫描分钟窗口数 = `2`，即“上一分钟补偿 + 当前分钟实时”
+- 所以每秒提交分片数 = `5 * 2 = 10`
+- `TriggerWorker.work` 会把一个 scheduler 线程挂住接近 `60s`
 - 稳态并发需求 = `10 * 60 = 600`
-- 真实 `schedulerPool.max` 只有 `100`
-- 理论缺口 = `500`
+- 真实 `schedulerPool.maxPoolSize = 100`
+- 理论上会有约 `500` 个分片长期滞留在线程池队列里
 
-也就是说，如果每个分片都接近一分钟才结束，线程池本身就先扛不住，后面的任务只能进队列。
+而真实队列配置又是：
 
-## 2. 为什么先表现成 Full GC，而不是直接 OOM
+- `scheduler.pool.queueCapacity = 99999`
+- `trigger.pool.queueCapacity = 99999`
 
-因为这更像“积压造成的对象晋升”：
+这意味着系统不会很快暴露拒绝或背压，而是先把压力藏进堆里。
 
-- 队列里堆的是待执行的分片扫描任务
-- 扫描过程中会产生 Redis `ZSet` 结果对象
-- Redis 异常时还会触发 DB fallback 结果集
-- 触发链路还会构造任务对象、回调请求体、上下文对象
+## 3. 这些对象为什么会晋升到老年代
 
-这些对象不一定永久泄漏，但会在 JVM 里停留得足够久：
+分片排队和扫描期间，堆里会同时堆这些东西：
 
-- Minor GC 一次回收不掉
-- 对象反复存活
-- 开始晋升到老年代
-- Old 区回落越来越慢
-- 最终先表现成 `Full GC` 频繁
+- 待执行的 `SchedulerTask` 分片上下文
+- Redis `rangeByScore` 拉回来的任务 member 集合
+- 反序列化后的 `TaskModel`
+- `TriggerTimerTask` 每轮构造的列表对象
+- 回调请求体、上下文对象、Future
+- Redis 抖动时 DB fallback 查出来的结果集
 
-所以这类问题最常见的第一阶段现象不是实例立刻挂掉，而是：
+它们不一定是典型泄漏，但在 JVM 里停留得足够久：
 
+1. 一轮 Young GC 回收不掉
+2. 又碰上下一轮调度继续提交
+3. 对象多次存活后晋升到老年代
+4. Old 区占用开始持续抬高
+5. Full GC 越来越频繁
+
+所以第一现场通常是：
+
+- `Full GC` 次数变多
 - 调度 RT 抖动
-- 触发延迟升高
-- Full GC 次数增加
-- Old 区占用长时间维持高位
+- 触发延迟上升
+- 实例未必立刻挂，但明显开始卡
 
-## 3. 我是怎么排查的
+## 4. 我会怎么排查
 
-先排除外部依赖，再看 JVM，再回代码。
-
-### 第一步：先看线程池和任务堆积
+### 第一步：先看线程池是不是已经失衡
 
 重点看：
 
@@ -57,21 +74,21 @@
 - `triggerPool.activeCount`
 - `triggerPool.queueSize`
 
-如果 `activeCount` 长时间接近上限，同时 `queueSize` 持续增长，说明不是瞬时尖峰，而是处理速率已经落后于提交速率。
+如果 `activeCount` 长时间顶满，`queueSize` 又持续上涨，说明不是瞬时尖峰，而是提交速率已经持续大于处理速率。
 
-### 第二步：确认不是单纯 Redis 或 DB 慢
+### 第二步：确认是不是 Redis 或 DB 把扫描拖长了
 
-我会看：
+重点看：
 
-- Redis `zrangeByScore` RT
-- DB fallback 查询 RT
+- Redis `rangeByScore` RT
+- `taskMapper.getTasksByTimeRange` RT
 - 回调 HTTP RT
 
-如果这些 RT 有波动但不是根因级别，就说明核心矛盾仍然在调度模型本身。
+这一步的目的是判断：到底是模型先有问题，还是外部依赖变慢把问题放大了。
 
-### 第三步：看 GC 指标
+### 第三步：看 GC 现场
 
-常用命令：
+常见命令：
 
 ```bash
 jstat -gcutil <pid> 1000 20
@@ -79,43 +96,39 @@ jcmd <pid> GC.heap_info
 jmap -histo:live <pid>
 ```
 
-典型特征：
+典型信号：
 
-- Young 区回收后存活对象仍然很多
-- Old 区占用持续偏高
-- Full GC 频次明显增加
-- 大对象排名里会出现任务对象、集合对象、Future、回调上下文
+- Young 区回收后仍有大量对象存活
+- Old 区长期高位
+- Full GC 频率明显高于正常值
+- 对象直方图里出现大量集合、任务对象、Future 和回调上下文
 
-### 第四步：回到代码链路确认根因
+### 第四步：回到 xtimer 代码收敛根因
 
-真正的问题是这几个条件叠在一起：
+真正的问题通常是这几件事叠在一起：
 
-1. 分片扫描不是短任务，而是近一分钟长任务
-2. 外层调度是每秒提交
-3. 线程池队列太大，等于把问题延后到堆内存
-4. 缺少有效背压，导致提交侧不知道下游已经饱和
+1. `SchedulerWorker` 每秒提交分片
+2. `TriggerWorker.work` 近一分钟才结束
+3. `queueCapacity=99999` 把压力藏起来
+4. Redis 异常时 DB fallback 进一步放大结果集
 
-## 4. 我是怎么解决的
+## 5. 我会怎么处理
 
 ### 先止血
 
-先做能最快见效的动作：
-
-1. 缩小单次扫描批次
-2. 暂时限制同时扫描的分片并发
+1. 缩小每轮扫描批次
+2. 暂时降低同时参与扫描的分片并发
 3. 控制 trigger 投递速率
-4. 必要时临时扩容节点
+4. 必要时扩容核心节点
 
-### 再做长期治理
+### 长期治理
 
-根治要改模型，不是只改 JVM 参数：
+1. 把深队列改成有界队列
+2. 抢锁前增加本机水位检查，不让饱和节点继续接 minuteBucketKey
+3. 降低无效扫描和重复补偿
+4. Redis 异常时严格限制 DB fallback 结果集
+5. 把近一分钟的长扫描任务拆成更短生命周期的子任务
 
-1. 把大队列改成有上限的可控队列
-2. 抢锁前先判断本机线程池和队列水位
-3. 降低无效扫描，减少空轮询和重复补偿
-4. Redis 异常时限制 DB fallback 结果集规模
-5. 把长生命周期扫描改成更细粒度、更短生命周期的任务
+## 6. 面试里怎么说
 
-## 5. 面试里怎么说
-
-> 这个调度中心我更愿意讲成 Full GC，而不是一上来讲 OOM。因为它的第一现场通常是分片扫描任务太长、外层提交太快、线程池队列太大，导致任务对象和查询结果在 JVM 里堆积，先出现对象晋升和 Full GC 频繁。排查时我会先看线程池堆积、Redis/DB RT 和 GC 指标，确认是处理模型问题，再通过限并发、缩批次、加背压和改队列模型去解决。
+> 我这个 ScheduleCenter 更先暴露出来的通常不是直接 OOM，而是 Full GC 频繁。因为真实 xtimer 里是每秒都在提交分钟分片任务，但抢到锁后的 TriggerWorker 会把这个分片持续扫描接近一分钟，导致 schedulerPool 很容易出现“外层提交快、内层任务长”的结构性积压。再叠加 Redis 查询、DB fallback、TaskModel 和回调上下文，这些对象会在堆里停留很久并晋升到老年代，先表现成 Full GC、RT 抖动和触发延迟。排查时我会先看 schedulerPool/triggerPool 队列，再看 Redis/DB RT 和 GC 指标，最后回到代码确认是长生命周期扫描、大队列和缺少背压共同造成的。 

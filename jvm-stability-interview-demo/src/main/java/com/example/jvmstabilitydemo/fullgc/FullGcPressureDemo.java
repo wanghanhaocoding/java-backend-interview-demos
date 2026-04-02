@@ -62,9 +62,31 @@ public class FullGcPressureDemo {
     private static void printInstruction() {
         System.out.println("Full GC 压力示例默认不执行。建议：");
         System.out.println("1) 先编译：mvn -q -DskipTests compile");
-        System.out.println("2) 再执行：java -Xms256m -Xmx256m -Xlog:gc* -cp target/classes com.example.jvmstabilitydemo.fullgc.FullGcPressureDemo --run");
+        System.out.println("2) 再执行：java -Xms256m -Xmx256m -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:gc.log -cp target/classes com.example.jvmstabilitydemo.fullgc.FullGcPressureDemo --run");
     }
 
-    public record JobEnvelope(String jobId, byte[] triggerBody, byte[] callbackBody) {
+    public static final class JobEnvelope {
+
+        private final String jobId;
+        private final byte[] triggerBody;
+        private final byte[] callbackBody;
+
+        public JobEnvelope(String jobId, byte[] triggerBody, byte[] callbackBody) {
+            this.jobId = jobId;
+            this.triggerBody = triggerBody;
+            this.callbackBody = callbackBody;
+        }
+
+        public String jobId() {
+            return jobId;
+        }
+
+        public byte[] triggerBody() {
+            return triggerBody;
+        }
+
+        public byte[] callbackBody() {
+            return callbackBody;
+        }
     }
 }

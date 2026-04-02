@@ -2,15 +2,18 @@
 
 一个专门为**面试复盘**准备的教学项目，聚焦三类高频线上稳定性问题：
 
+当前这版已经调整为 **JDK 8 可编译、可运行**，适合放到公司仍在使用 `JDK8` 的环境里演练。
+
 1. `OOM`（OutOfMemoryError）
 2. `Full GC` 频繁导致系统抖动
 3. `死锁`（Deadlock）
 
-这个项目不是在还原某个真实生产仓库，而是**结合你的简历背景做的“可讲述版案例抽象”**：
+这个项目现在优先对齐你简历中的第一个项目，也就是 **ScheduleCenter / bitstorm-svr-xtimer** 这条真实调度链路：
 
-- `ScheduleCenter`：高精度定时调度中心
-- `AsyncJobCenter`：异步任务中心
-- `司库信息系统`：资金计划、预算、网银指令、回执处理等核心链路
+- `SchedulerWorker`：每秒提交分钟分片
+- `SchedulerTask`：抢分布式锁后进入分片处理
+- `TriggerWorker / TriggerTimerTask`：按秒扫描 minuteBucketKey
+- `TaskCache / TaskMapper / ExecutorWorker`：Redis 取数、DB fallback、执行回调
 
 目标不是单纯给你一堆概念，而是把这 3 类问题都拆成：
 
@@ -28,6 +31,13 @@
 2. `docs/full-gc-case.md`
 3. `docs/deadlock-case.md`
 4. `docs/interview-cheatsheet.md`
+
+如果你要把这个 demo 真正部署到 Linux 服务器上，一步一步演练线上故障，再先看：
+
+- `docs/linux-server-lab-roadmap.md`
+- `docs/linux-server-oom-lab.md`
+- `docs/linux-server-deadlock-lab.md`
+- `scripts/run-oom-lab.sh`
 
 如果你想再结合代码理解，可以继续看：
 
@@ -91,7 +101,7 @@ java -Xms128m -Xmx128m -cp target/classes com.example.jvmstabilitydemo.oom.OomLe
 
 ```bash
 mvn -q -DskipTests compile
-java -Xms256m -Xmx256m -Xlog:gc* -cp target/classes com.example.jvmstabilitydemo.fullgc.FullGcPressureDemo --run
+java -Xms256m -Xmx256m -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:gc.log -cp target/classes com.example.jvmstabilitydemo.fullgc.FullGcPressureDemo --run
 ```
 
 ### 5. 运行死锁示例
@@ -100,6 +110,31 @@ java -Xms256m -Xmx256m -Xlog:gc* -cp target/classes com.example.jvmstabilitydemo
 mvn -q -DskipTests compile
 java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo
 ```
+
+### 6. 在 Linux 服务器上按步骤演练 OOM
+
+```bash
+chmod +x scripts/run-oom-lab.sh
+./scripts/run-oom-lab.sh preview
+./scripts/run-oom-lab.sh run
+```
+
+更完整的步骤见：
+
+- `docs/linux-server-oom-lab.md`
+- `docs/linux-server-lab-roadmap.md`
+
+### 7. 在 Linux 服务器上手工演练死锁
+
+```bash
+mvn -q -DskipTests compile
+java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo --hold-seconds=60
+```
+
+更完整的步骤见：
+
+- `docs/linux-server-deadlock-lab.md`
+- `docs/linux-server-lab-roadmap.md`
 
 ---
 
@@ -125,5 +160,5 @@ java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo
 - 关键词：时间窗预取、本地缓冲、秒级调度、批量扫描
 
 ### 死锁
-- 对应：`司库信息系统 / AsyncJobCenter`
-- 关键词：任务状态流转、补偿线程、锁顺序
+- 对应：`ScheduleCenter / xtimer`
+- 关键词：`timer_task`、`xtimer`、停用定时器、锁顺序

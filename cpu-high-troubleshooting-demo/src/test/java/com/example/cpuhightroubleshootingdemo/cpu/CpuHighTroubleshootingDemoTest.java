@@ -13,25 +13,25 @@ class CpuHighTroubleshootingDemoTest {
     private CpuHighTroubleshootingDemoService cpuHighTroubleshootingDemoService;
 
     @Test
-    void shouldDescribeScheduleCenterBusySpinCase() {
-        CpuHighTroubleshootingDemoService.BusySpinCaseResult result =
-                cpuHighTroubleshootingDemoService.scheduleCenterBusySpinCase();
+    void shouldDescribeXtimerEmptyScanCase() {
+        CpuHighTroubleshootingDemoService.XtimerEmptyScanCaseResult result =
+                cpuHighTroubleshootingDemoService.xtimerEmptyScanCase();
 
-        assertThat(result.signals().get("hotThread")).isEqualTo(BusySpinScheduleScannerDemo.HOT_THREAD_NAME);
-        assertThat(result.steps()).anyMatch(step -> step.contains("空扫"));
+        assertThat(result.signals().get("hotThread")).isEqualTo(XtimerEmptyScanCpuDemo.HOT_THREAD_NAME);
+        assertThat(result.steps()).anyMatch(step -> step.contains("TriggerWorker"));
         assertThat(result.commands()).contains("top -Hp <pid>");
-        assertThat(result.fixes()).anyMatch(fix -> fix.contains("退避"));
+        assertThat(result.fixes()).anyMatch(fix -> fix.contains("empty scan"));
     }
 
     @Test
-    void shouldDescribeRetryStormCase() {
-        CpuHighTroubleshootingDemoService.RetryStormCaseResult result =
-                cpuHighTroubleshootingDemoService.asyncJobRetryStormCase();
+    void shouldDescribeXtimerFallbackStormCase() {
+        CpuHighTroubleshootingDemoService.XtimerFallbackStormCaseResult result =
+                cpuHighTroubleshootingDemoService.xtimerFallbackStormCase();
 
-        assertThat(result.jobAttempts()).containsKeys("AJC-RETRY-1001", "AJC-RETRY-1002", "AJC-RETRY-1003");
-        assertThat(result.jobAttempts().values()).allMatch(attempts -> attempts > 2_000);
-        assertThat(result.steps()).anyMatch(step -> step.contains("order_time"));
-        assertThat(result.fixes()).anyMatch(fix -> fix.contains("指数退避"));
+        assertThat(result.bucketAttempts()).containsKeys("2026-03-30 10:14_0", "2026-03-30 10:14_1", "2026-03-30 10:15_0");
+        assertThat(result.bucketAttempts().values()).allMatch(attempts -> attempts > 2_000);
+        assertThat(result.steps()).anyMatch(step -> step.contains("taskMapper.getTasksByTimeRange"));
+        assertThat(result.fixes()).anyMatch(fix -> fix.contains("fallback"));
     }
 
     @Test
@@ -41,6 +41,6 @@ class CpuHighTroubleshootingDemoTest {
 
         assertThat(playbook.steps()).hasSize(6);
         assertThat(playbook.steps()).anyMatch(step -> step.contains("top -Hp"));
-        assertThat(playbook.evidenceChecklist()).anyMatch(item -> item.contains("火焰图"));
+        assertThat(playbook.evidenceChecklist()).anyMatch(item -> item.contains("minuteBucketKey"));
     }
 }

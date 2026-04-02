@@ -15,10 +15,13 @@ public class OomLeakDemo {
         }
 
         ScheduleCenterTaskStormSimulator simulator = new ScheduleCenterTaskStormSimulator(new LeakyScheduleSnapshotBuffer());
-        switch (args[0]) {
-            case "--preview" -> System.out.println(simulator.previewOneRound());
-            case "--run" -> simulator.runUntilOom();
-            default -> printInstruction();
+        String command = args[0];
+        if ("--preview".equals(command)) {
+            System.out.println(simulator.previewOneRound());
+        } else if ("--run".equals(command)) {
+            simulator.runUntilOom();
+        } else {
+            printInstruction();
         }
     }
 
