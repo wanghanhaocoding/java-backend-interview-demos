@@ -6,13 +6,16 @@ public final class CaseStoryLibrary {
     }
 
     public static String oomSummary() {
-        return "ScheduleCenter 在任务触发失败风暴下，把失败任务完整快照留在无上限本地 fallback buffer 中，"
-            + "而且还维护了多份索引，导致对象长期强引用，最终触发 OOM。排查通过监控 -> jstat -> heap dump -> MAT 收敛到 ScheduleTaskSnapshot。";
+        return "在 ScheduleCenter / bitstorm-svr-xtimer 里，OOM 通常不是第一现场，而是 Full GC 频繁继续恶化后的积压型 OOM。"
+            + "SchedulerWorker 每秒持续提交 minute bucket 分片，TriggerWorker.work 单分片又会扫接近一分钟，"
+            + "再叠加 Redis rangeByScore、DB fallback taskMapper.getTasksByTimeRange、TaskModel 和回调上下文，"
+            + "对象会长期滞留并把老年代慢慢打满。";
     }
 
     public static String fullGcSummary() {
-        return "ScheduleCenter 为保证秒级调度做了未来时间窗预取，但单批预取过大、背压不足，"
-            + "导致任务对象在本地缓冲中停留过久并晋升到老年代，引发频繁 Full GC 和调度抖动。";
+        return "在 ScheduleCenter / xtimer 里，更先暴露出来的通常是 Full GC。因为 @Scheduled(fixedRate = 1000) 每秒都在继续提分片，"
+            + "5 bucket * 2 个分钟窗口约等于 10 个分片/秒，但抢到锁后的 TriggerWorker.work 会持续接近 60 秒，"
+            + "schedulerPool/triggerPool 深队列吞吐跟不上时，对象会逐步晋升老年代，先表现成 Full GC 频繁、RT 抖动和触发延迟。";
     }
 
     public static String deadlockSummary() {

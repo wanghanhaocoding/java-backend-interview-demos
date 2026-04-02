@@ -11,10 +11,18 @@
 
 这个项目现在优先对齐你简历中的第一个项目，也就是 **ScheduleCenter / bitstorm-svr-xtimer** 这条真实调度链路：
 
-- `SchedulerWorker`：每秒提交分钟分片
-- `SchedulerTask`：抢分布式锁后进入分片处理
-- `TriggerWorker / TriggerTimerTask`：按秒扫描 minuteBucketKey
-- `TaskCache / TaskMapper / ExecutorWorker`：Redis 取数、DB fallback、执行回调
+- `MigratorWorker`：先把未来时间窗任务迁移到 Redis `ZSet`
+- `SchedulerWorker`：`@Scheduled(fixedRate = 1000)` 每秒提交分钟分片
+- `SchedulerTask.asyncHandleSlice`：抢到分布式锁后进入分片处理
+- `TriggerWorker.work -> TriggerTimerTask -> TriggerPoolTask`：按秒扫描 `minuteBucketKey` 并触发任务
+- `TaskCache / TaskMapper / ExecutorWorker`：Redis `rangeByScore`、DB fallback、执行回调
+
+这一版的重点不是泛泛讲 JVM，而是把真实项目里最容易被追问的稳定性链路讲清楚：
+
+- 在 `xtimer` 这类调度中心里，通常**先暴露出来的不是直接 OOM，而是 Full GC 频繁**
+- 原因是外层每秒持续提交分片，但单个分片扫描任务生命周期接近 `60s`
+- 一旦 `schedulerPool` / `triggerPool` 吞吐跟不上，再叠加 Redis 抖动、DB fallback、任务对象和回调上下文，老年代就会先被顶高
+- 所以真实现场更像：`Old 区升高 -> Full GC 频繁 -> 调度 RT 抖动 -> 任务触发延迟 -> 继续恶化后才到积压型 OOM`
 
 目标不是单纯给你一堆概念，而是把这 4 类问题都拆成：
 
@@ -28,8 +36,8 @@
 
 ## 你最先看这 5 个文件就够了
 
-1. `docs/oom-case.md`
-2. `docs/full-gc-case.md`
+1. `docs/full-gc-case.md`
+2. `docs/oom-case.md`
 3. `docs/deadlock-case.md`
 4. `docs/thread-troubleshooting-case.md`
 5. `docs/interview-cheatsheet.md`
@@ -166,12 +174,12 @@ java -cp target/classes com.example.jvmstabilitydemo.deadlock.DeadlockDemo --hol
 ## 这套案例和你的简历怎么对应
 
 ### OOM
-- 对应：`ScheduleCenter`
-- 关键词：触发失败、本地补偿快照、fallback snapshot、多索引强引用
+- 对应：`ScheduleCenter / bitstorm-svr-xtimer`
+- 关键词：先 Full GC 再恶化、触发失败、本地补偿快照、fallback snapshot、多索引强引用、积压型 OOM
 
 ### Full GC
-- 对应：`ScheduleCenter`
-- 关键词：时间窗预取、本地缓冲、秒级调度、批量扫描
+- 对应：`ScheduleCenter / bitstorm-svr-xtimer`
+- 关键词：`fixedRate=1s`、`5 bucket * 2 window`、分片长扫描、`schedulerPool/triggerPool` 深队列、`rangeByScore`、`taskMapper.getTasksByTimeRange`
 
 ### 死锁
 - 对应：`ScheduleCenter / xtimer`，也可以延展到 `司库信息系统 / AsyncJobCenter`
