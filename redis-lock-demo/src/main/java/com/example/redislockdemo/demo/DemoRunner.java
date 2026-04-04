@@ -4,8 +4,10 @@ import com.example.redislockdemo.api.RedissonApiDemoService;
 import com.example.redislockdemo.concurrency.CacheConcurrencyDemoService;
 import com.example.redislockdemo.concurrency.CounterConcurrencyDemoService;
 import com.example.redislockdemo.concurrency.OrderedThreadExecutionDemoService;
+import com.example.redislockdemo.concurrency.AsyncExceptionHandlingDemoService;
 import com.example.redislockdemo.concurrency.SpringAsyncPoolDemoService;
 import com.example.redislockdemo.concurrency.ThreadPoolTeachingDemoService;
+import com.example.redislockdemo.failover.MasterReplicaFailoverDemoService;
 import com.example.redislockdemo.nativeapi.NativeRedisLockService;
 import com.example.redislockdemo.orderidempotency.OrderSubmitIdempotencyDemoService;
 import com.example.redislockdemo.redisson.RedissonLockService;
@@ -30,9 +32,11 @@ public class DemoRunner implements CommandLineRunner {
     private final CounterConcurrencyDemoService counterConcurrencyDemoService;
     private final CacheConcurrencyDemoService cacheConcurrencyDemoService;
     private final OrderedThreadExecutionDemoService orderedThreadExecutionDemoService;
+    private final AsyncExceptionHandlingDemoService asyncExceptionHandlingDemoService;
     private final OrderSubmitIdempotencyDemoService orderSubmitIdempotencyDemoService;
     private final ThreadPoolTeachingDemoService threadPoolTeachingDemoService;
     private final SpringAsyncPoolDemoService springAsyncPoolDemoService;
+    private final MasterReplicaFailoverDemoService masterReplicaFailoverDemoService;
     private final ExecutionTracker executionTracker;
 
     public DemoRunner(NativeRedisLockService nativeRedisLockService,
@@ -42,9 +46,11 @@ public class DemoRunner implements CommandLineRunner {
                       CounterConcurrencyDemoService counterConcurrencyDemoService,
                       CacheConcurrencyDemoService cacheConcurrencyDemoService,
                       OrderedThreadExecutionDemoService orderedThreadExecutionDemoService,
+                      AsyncExceptionHandlingDemoService asyncExceptionHandlingDemoService,
                       OrderSubmitIdempotencyDemoService orderSubmitIdempotencyDemoService,
                       ThreadPoolTeachingDemoService threadPoolTeachingDemoService,
                       SpringAsyncPoolDemoService springAsyncPoolDemoService,
+                      MasterReplicaFailoverDemoService masterReplicaFailoverDemoService,
                       ExecutionTracker executionTracker) {
         this.nativeRedisLockService = nativeRedisLockService;
         this.redissonLockService = redissonLockService;
@@ -53,9 +59,11 @@ public class DemoRunner implements CommandLineRunner {
         this.counterConcurrencyDemoService = counterConcurrencyDemoService;
         this.cacheConcurrencyDemoService = cacheConcurrencyDemoService;
         this.orderedThreadExecutionDemoService = orderedThreadExecutionDemoService;
+        this.asyncExceptionHandlingDemoService = asyncExceptionHandlingDemoService;
         this.orderSubmitIdempotencyDemoService = orderSubmitIdempotencyDemoService;
         this.threadPoolTeachingDemoService = threadPoolTeachingDemoService;
         this.springAsyncPoolDemoService = springAsyncPoolDemoService;
+        this.masterReplicaFailoverDemoService = masterReplicaFailoverDemoService;
         this.executionTracker = executionTracker;
     }
 
@@ -166,6 +174,61 @@ public class DemoRunner implements CommandLineRunner {
             slice.workerSteps().forEach(step -> System.out.println("  worker-" + step.workerNo() + " -> thread=" + step.threadName()));
         });
         System.out.println("结论 = 这类写法更接近项目里 @Async + ThreadPoolTaskExecutor 的分层调度方式");
+
+        printTitle("17. Redis 主从切换：主从同步失败为什么会让锁失效");
+        MasterReplicaFailoverDemoService.ReplicationGapDemoResult failover =
+                masterReplicaFailoverDemoService.replicationLagCausesLockLoss("order-2001");
+        failover.steps().forEach(System.out::println);
+        System.out.println("lockKey = " + failover.lockKey());
+        System.out.println("oldMaster = " + failover.oldMasterNode());
+        System.out.println("promotedMaster = " + failover.promotedMasterNode());
+        System.out.println("oldOwner = " + failover.oldOwner().ownerId() + ", token=" + failover.oldOwner().ownerToken());
+        System.out.println("newOwner = " + failover.newOwner().ownerId() + ", token=" + failover.newOwner().ownerToken());
+        System.out.println("mutualExclusionBroken = " + failover.mutualExclusionBroken());
+        System.out.println(failover.conclusion());
+
+        printTitle("18. 最终兜底：fencing token + 下游资源校验");
+        MasterReplicaFailoverDemoService.FencingTokenDemoResult fencing =
+                masterReplicaFailoverDemoService.fencingTokenProtectsDownstream("inventory-2001");
+        fencing.steps().forEach(System.out::println);
+        System.out.println("acceptedWrite = owner=" + fencing.acceptedWrite().ownerId()
+                + ", token=" + fencing.acceptedWrite().fenceToken()
+                + ", accepted=" + fencing.acceptedWrite().accepted());
+        System.out.println("rejectedWrite = owner=" + fencing.rejectedWrite().ownerId()
+                + ", token=" + fencing.rejectedWrite().fenceToken()
+                + ", accepted=" + fencing.rejectedWrite().accepted()
+                + ", reason=" + fencing.rejectedWrite().reason());
+        System.out.println("latestAcceptedFenceToken = " + fencing.latestAcceptedFenceToken());
+        fencing.guardrails().forEach(guardrail -> System.out.println("guardrail = " + guardrail));
+
+        printTitle("19. 多个异步子线程：怎么隔离异常，不让单个子线程拖垮父流程");
+        AsyncExceptionHandlingDemoService.ChildTaskIsolationDemoResult isolation =
+                asyncExceptionHandlingDemoService.childTaskIsolationDemo();
+        isolation.outcomes().forEach(outcome -> System.out.println(outcome.taskName()
+                + " -> success=" + outcome.success()
+                + ", thread=" + outcome.threadName()
+                + ", result=" + outcome.result()
+                + ", errorType=" + outcome.errorType()
+                + ", errorMessage=" + outcome.errorMessage()));
+        System.out.println("parentThread = " + isolation.parentThreadName());
+        System.out.println("parentContinued = " + isolation.parentContinued());
+        System.out.println("successCount = " + isolation.successCount());
+        System.out.println("failureCount = " + isolation.failureCount());
+        isolation.boundaryNotes().forEach(note -> System.out.println("boundary = " + note));
+
+        printTitle("20. 子线程异常怎么拿：Future.get / UncaughtExceptionHandler");
+        AsyncExceptionHandlingDemoService.FutureGetCaptureDemoResult futureCapture =
+                asyncExceptionHandlingDemoService.futureGetCaptureDemo();
+        System.out.println("Future.get -> captured=" + futureCapture.captured()
+                + ", errorType=" + futureCapture.errorType()
+                + ", errorMessage=" + futureCapture.errorMessage());
+        AsyncExceptionHandlingDemoService.UncaughtExceptionHandlerDemoResult uncaughtCapture =
+                asyncExceptionHandlingDemoService.uncaughtExceptionHandlerDemo();
+        System.out.println("UncaughtExceptionHandler -> captured=" + uncaughtCapture.captured()
+                + ", thread=" + uncaughtCapture.threadName()
+                + ", errorType=" + uncaughtCapture.errorType()
+                + ", errorMessage=" + uncaughtCapture.errorMessage());
+        System.out.println("结论 = submit/CompletableFuture 要在父线程保留句柄并统一收敛；fire-and-forget 任务至少要配 UncaughtExceptionHandler");
     }
 
     private void printCounterResult(CounterConcurrencyDemoService.CounterDemoResult result) {

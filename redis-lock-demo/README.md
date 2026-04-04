@@ -23,6 +23,12 @@
 17. Spring `ThreadPoolTaskExecutor + @Async` 在项目里怎么分层使用
 18. 为什么 xtimer 那类项目会拆 `schedulerPool` 和 `workerPool`
 19. MySQL 慢查询怎么复现、定位和优化
+20. Redis 主从同步失败、主挂从切换时，为什么锁会失效
+21. 纯 Redis 分布式锁为什么不能作为最终兜底
+22. 什么是 fencing token，为什么它能补上最终一致性防线
+23. 多个异步子线程并发时，怎么避免一个子线程崩溃拖垮父流程
+24. 子线程异常怎么拿，`Future.get`、`CompletableFuture`、`UncaughtExceptionHandler` 分别适合什么场景
+25. `try/catch` 应该放在子任务边界还是父编排边界
 
 ---
 
@@ -65,11 +71,15 @@
 7. `OrderedThreadExecutionDemoService`
 8. `ThreadPoolTeachingDemoService`
 9. `SpringAsyncPoolDemoService`
-10. `DemoRunner`
-11. `RedisLockDemoTest`
-12. `ConcurrencyDemoTest`
-13. `ThreadPoolTeachingDemoTest`
-14. `SpringAsyncPoolDemoTest`
+10. `MasterReplicaFailoverDemoService`
+11. `AsyncExceptionHandlingDemoService`
+12. `DemoRunner`
+13. `RedisLockDemoTest`
+14. `ConcurrencyDemoTest`
+15. `ThreadPoolTeachingDemoTest`
+16. `SpringAsyncPoolDemoTest`
+17. `MasterReplicaFailoverDemoTest`
+18. `AsyncExceptionHandlingDemoTest`
 
 ---
 
@@ -518,6 +528,26 @@ mvn -Dtest=ConcurrencyDemoTest,ThreadPoolTeachingDemoTest test
 
 > 因为它背后常常是无界队列，流量持续堆积时可能把延迟和内存问题悄悄放大。生产里更推荐显式配置 `ThreadPoolExecutor`。
 
+### 主从同步失败、主挂从切换为什么会让 Redis 锁失效？
+
+> 因为 Redis 主从复制默认是异步的。A 刚在 master 拿到锁，这把锁还没复制到 replica，master 就挂了；replica 升主后看不到这把锁，B 就可能再次拿到同一把锁，互斥性就被破坏了。
+
+### 这种情况下还有最终兜底方案吗？
+
+> 单靠 Redis 锁没有最终兜底。真正的兜底要放在下游资源上，比如 fencing token + version/CAS、唯一索引、幂等表、状态机前进校验。也就是“锁只能减少并发，最终正确性要靠业务资源自己把关”。
+
+### 多个异步子线程并发时，怎么避免一个子线程拖垮父线程？
+
+> 父线程不能只把任务扔出去不管，要保留 `Future` 或 `CompletableFuture` 句柄；子任务边界自己捕获异常、补齐上下文、释放资源，父线程再统一 `get/join` 汇总结果，决定重试、降级还是补偿。
+
+### 子线程异常怎么获取？
+
+> `ExecutorService.submit` 用 `Future.get()`；`CompletableFuture` 用 `join` / `handle` / `whenComplete`；原生 `Thread` 的 fire-and-forget 场景至少要配 `UncaughtExceptionHandler`。
+
+### `try/catch` 应该放在哪里？
+
+> 第一层放在子任务边界，负责记录业务上下文和释放当前线程资源；第二层放在父编排边界，负责汇总所有子任务结果并决定是否重试、补偿或快速失败。不要只在父线程外层写一个大 `try/catch`，它抓不到已经异步出去的异常。
+
 ---
 
 ## 关键源码位置
@@ -526,14 +556,18 @@ mvn -Dtest=ConcurrencyDemoTest,ThreadPoolTeachingDemoTest test
 - Redisson 主线：`redisson/RedissonLockService.java`
 - watchdog：`watchdog/WatchdogDemoService.java`
 - API：`api/RedissonApiDemoService.java`
+- 主从切换锁失效：`failover/MasterReplicaFailoverDemoService.java`
 - JVM 计数器并发：`concurrency/CounterConcurrencyDemoService.java`
 - JVM 缓存并发：`concurrency/CacheConcurrencyDemoService.java`
 - JVM 顺序执行：`concurrency/OrderedThreadExecutionDemoService.java`
 - 线程池教学：`concurrency/ThreadPoolTeachingDemoService.java`
+- 异步异常治理：`concurrency/AsyncExceptionHandlingDemoService.java`
 - 串讲入口：`demo/DemoRunner.java`
 - Redis 锁测试：`src/test/java/com/example/redislockdemo/RedisLockDemoTest.java`
 - JVM 并发测试：`src/test/java/com/example/redislockdemo/concurrency/ConcurrencyDemoTest.java`
 - 线程池测试：`src/test/java/com/example/redislockdemo/concurrency/ThreadPoolTeachingDemoTest.java`
+- 主从切换测试：`src/test/java/com/example/redislockdemo/failover/MasterReplicaFailoverDemoTest.java`
+- 异步异常测试：`src/test/java/com/example/redislockdemo/concurrency/AsyncExceptionHandlingDemoTest.java`
 
 ---
 
