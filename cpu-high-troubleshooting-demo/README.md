@@ -15,6 +15,8 @@
 - `cpu/CpuHighTroubleshootingDemoService.java`
 - `cpu/XtimerEmptyScanCpuDemo.java`
 - `cpu/XtimerFallbackStormCpuDemo.java`
+- `cpu/CpuScenarioRuntimeService.java`
+- `web/CpuScenarioController.java`
 
 会直接演示两类更贴真实项目的 CPU 高场景：
 
@@ -39,6 +41,12 @@
 - `docs/linux-xtimer-empty-scan-runbook.md`
 - `docs/linux-xtimer-fallback-query-storm-runbook.md`
 
+如果你想把它当成一个一直挂在服务器上的服务来跑，直接看：
+
+- `web/CpuScenarioController.java`
+- `cpu/CpuScenarioRuntimeService.java`
+- `application.yml`
+
 ## 这个项目怎么学
 
 建议按这个顺序看：
@@ -51,11 +59,59 @@
 
 ## 如何运行
 
+### 1. 常驻服务模式
+
 ```bash
 mvn spring-boot:run
 ```
 
-启动后会顺序打印：
+现在这个模块会以 Spring Boot Web 服务的方式常驻，不会再像以前一样打印完就退出。
+
+启动后可以直接用这些接口：
+
+```bash
+curl -s http://127.0.0.1:8080/api/cpu/status
+curl -s http://127.0.0.1:8080/api/cpu/cases
+curl -s -X POST "http://127.0.0.1:8080/api/cpu/scenarios/empty-scan/start?durationSeconds=0"
+curl -s -X POST "http://127.0.0.1:8080/api/cpu/scenarios/fallback-storm/start?durationSeconds=0"
+curl -s -X POST http://127.0.0.1:8080/api/cpu/scenarios/stop
+curl -s http://127.0.0.1:8080/actuator/health
+```
+
+其中：
+
+1. `durationSeconds=0` 表示一直跑，直到你手动 stop
+2. `/api/cpu/status` 会返回当前热点线程、运行时长和计数器
+3. `/actuator/health` 会暴露 `cpuScenario` 的当前状态明细
+
+### 2. 直接打 jar 常驻
+
+```bash
+mvn -q -DskipTests package
+java -jar target/cpu-high-troubleshooting-demo-0.0.1-SNAPSHOT.jar
+```
+
+如果你想一启动就自动打热点：
+
+```bash
+java -jar target/cpu-high-troubleshooting-demo-0.0.1-SNAPSHOT.jar \
+  --demo.scenario.auto-start=empty-scan \
+  --demo.scenario.duration-seconds=0
+```
+
+或者：
+
+```bash
+java -jar target/cpu-high-troubleshooting-demo-0.0.1-SNAPSHOT.jar \
+  --demo.scenario.auto-start=fallback-storm \
+  --demo.scenario.duration-seconds=0
+```
+
+### 3. 旧的命令行演练模式
+
+老的类入口仍然保留，适合你在本机或 Linux 上单独演练某个热点线程。
+
+启动后仍会打印：
 
 1. xtimer 空 minuteBucketKey 扫描热点
 2. xtimer DB fallback 查询风暴热点
@@ -104,6 +160,41 @@ jstack <pid> | grep -A 20 <nid>
 
 ```bash
 ./profiler.sh -e cpu -d 15 -f cpu.html <pid>
+```
+
+## 如何在 Linux 服务器上长期挂着
+
+如果你的目标是把它当成一台服务器上的常驻演练项目，推荐直接用 `nohup + java -jar`：
+
+```bash
+mkdir -p lab-output/cpu-high-service
+nohup java -jar target/cpu-high-troubleshooting-demo-0.0.1-SNAPSHOT.jar \
+  --server.port=8080 \
+  --demo.node-id=cpu-node-a \
+  > lab-output/cpu-high-service/app.log 2>&1 &
+```
+
+然后按需启动某个热点场景：
+
+```bash
+curl -s -X POST "http://127.0.0.1:8080/api/cpu/scenarios/empty-scan/start?durationSeconds=0"
+```
+
+或者：
+
+```bash
+curl -s -X POST "http://127.0.0.1:8080/api/cpu/scenarios/fallback-storm/start?durationSeconds=0"
+```
+
+你也可以在启动时自动拉起：
+
+```bash
+nohup java -jar target/cpu-high-troubleshooting-demo-0.0.1-SNAPSHOT.jar \
+  --server.port=8080 \
+  --demo.node-id=cpu-node-a \
+  --demo.scenario.auto-start=empty-scan \
+  --demo.scenario.duration-seconds=0 \
+  > lab-output/cpu-high-service/app.log 2>&1 &
 ```
 
 ## 面试里怎么说最稳

@@ -1,5 +1,6 @@
 package com.example.cpuhightroubleshootingdemo.demo;
 
+import com.example.cpuhightroubleshootingdemo.config.CpuHighDemoProperties;
 import com.example.cpuhightroubleshootingdemo.cpu.CpuHighTroubleshootingDemoService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -11,8 +12,12 @@ public class DemoRunner implements CommandLineRunner {
 
     private final CpuHighTroubleshootingDemoService cpuHighTroubleshootingDemoService;
 
-    public DemoRunner(CpuHighTroubleshootingDemoService cpuHighTroubleshootingDemoService) {
+    private final CpuHighDemoProperties cpuHighDemoProperties;
+
+    public DemoRunner(CpuHighTroubleshootingDemoService cpuHighTroubleshootingDemoService,
+                      CpuHighDemoProperties cpuHighDemoProperties) {
         this.cpuHighTroubleshootingDemoService = cpuHighTroubleshootingDemoService;
+        this.cpuHighDemoProperties = cpuHighDemoProperties;
     }
 
     @Override
@@ -38,6 +43,17 @@ public class DemoRunner implements CommandLineRunner {
         printTitle("3. CPU 标高排查 SOP");
         playbook.steps().forEach(System.out::println);
         System.out.println("evidence = " + playbook.evidenceChecklist());
+
+        printTitle("4. 常驻服务模式");
+        System.out.println("当前节点 = " + cpuHighDemoProperties.getNodeId() + ", 默认端口 = 8080");
+        System.out.println("status: curl -s http://127.0.0.1:8080/api/cpu/status");
+        System.out.println("cases: curl -s http://127.0.0.1:8080/api/cpu/cases");
+        System.out.println("start empty-scan: curl -s -X POST \"http://127.0.0.1:8080/api/cpu/scenarios/empty-scan/start?durationSeconds=0\"");
+        System.out.println("start fallback-storm: curl -s -X POST \"http://127.0.0.1:8080/api/cpu/scenarios/fallback-storm/start?durationSeconds=0\"");
+        System.out.println("stop: curl -s -X POST http://127.0.0.1:8080/api/cpu/scenarios/stop");
+        System.out.println("health: curl -s http://127.0.0.1:8080/actuator/health");
+        System.out.println("autoStart = " + cpuHighDemoProperties.getScenario().getAutoStart()
+                + ", durationSeconds = " + cpuHighDemoProperties.getScenario().getDurationSeconds());
     }
 
     private void printTitle(String title) {

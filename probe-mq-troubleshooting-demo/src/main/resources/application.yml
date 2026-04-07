@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: probe-mq-troubleshooting-demo
+
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 6
+      min-spare: 2
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,httpPressure
+  health:
+    readinessstate:
+      enabled: true
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %msg%n"
+
+teaching:
+  runner:
+    enabled: true
+
+demo:
+  node-id: node-a
+  fault:
+    enabled: false
+    block-seconds: 20
+  readiness:
+    down-threshold: 4
+  mq:
+    consumer-count: 2
+    queue-capacity: 256
+    produce-interval-ms: 1000
+    auto-produce: true

@@ -11,10 +11,10 @@
     </parent>
 
     <groupId>com.example</groupId>
-    <artifactId>cpu-high-troubleshooting-demo</artifactId>
+    <artifactId>probe-mq-troubleshooting-demo</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>cpu-high-troubleshooting-demo</name>
-    <description>Teaching demo for production CPU high troubleshooting in xtimer ScheduleCenter</description>
+    <name>probe-mq-troubleshooting-demo</name>
+    <description>Teaching demo for probe unhealthy while MQ consumer keeps running</description>
 
     <properties>
         <java.version>1.8</java.version>

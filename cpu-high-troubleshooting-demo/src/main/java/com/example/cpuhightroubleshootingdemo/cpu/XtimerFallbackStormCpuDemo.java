@@ -105,7 +105,7 @@ public class XtimerFallbackStormCpuDemo {
         return Math.max(5, Integer.parseInt(args[1]));
     }
 
-    private static String hottestBucket(Map<String, LongAdder> bucketAttempts) {
+    static String hottestBucket(Map<String, LongAdder> bucketAttempts) {
         String hottest = null;
         long hottestCount = Long.MIN_VALUE;
         for (Map.Entry<String, LongAdder> entry : bucketAttempts.entrySet()) {
@@ -118,7 +118,7 @@ public class XtimerFallbackStormCpuDemo {
         return hottest;
     }
 
-    private static long simulateFallbackQuery(MinuteBucketFallbackTask task) {
+    static long simulateFallbackQuery(MinuteBucketFallbackTask task) {
         long checksum = task.minuteBucketKey().hashCode() ^ task.round();
         String sql = "SELECT * FROM timer_task WHERE run_timer >= " + task.windowStartMillis()
                 + " AND run_timer <= " + task.windowEndMillis()
@@ -134,7 +134,7 @@ public class XtimerFallbackStormCpuDemo {
         return checksum;
     }
 
-    private static ArrayDeque<MinuteBucketFallbackTask> seedQueue() {
+    static ArrayDeque<MinuteBucketFallbackTask> seedQueue() {
         return new ArrayDeque<MinuteBucketFallbackTask>(Arrays.asList(
                 new MinuteBucketFallbackTask("2026-03-30 10:14_0", 1743300840000L, 1743300840999L, 10001L, 0),
                 new MinuteBucketFallbackTask("2026-03-30 10:14_1", 1743300841000L, 1743300841999L, 10002L, 0),
@@ -142,7 +142,7 @@ public class XtimerFallbackStormCpuDemo {
         ));
     }
 
-    private static long resolvePid() {
+    static long resolvePid() {
         String runtimeName = ManagementFactory.getRuntimeMXBean().getName();
         int atIndex = runtimeName.indexOf('@');
         if (atIndex <= 0) {

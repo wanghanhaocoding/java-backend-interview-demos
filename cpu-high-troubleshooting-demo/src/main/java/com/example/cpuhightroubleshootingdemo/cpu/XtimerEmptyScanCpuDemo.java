@@ -108,7 +108,7 @@ public class XtimerEmptyScanCpuDemo {
         return Math.max(5, Integer.parseInt(args[1]));
     }
 
-    private static long scanMinuteBucket(String minuteBucketKey, int round) {
+    static long scanMinuteBucket(String minuteBucketKey, int round) {
         long checksum = minuteBucketKey.hashCode() ^ round;
         String request = "rangeByScore key=" + minuteBucketKey
                 + " window=[" + (1740820800000L + round * 1000L)
@@ -119,7 +119,7 @@ public class XtimerEmptyScanCpuDemo {
         return checksum;
     }
 
-    private static long simulateFallbackGuard(String minuteBucketKey, int round) {
+    static long simulateFallbackGuard(String minuteBucketKey, int round) {
         long checksum = round;
         String payload = minuteBucketKey + "|redisMissCheck|taskMapper.getTasksByTimeRange|status=0";
         for (int i = 0; i < payload.length(); i++) {
@@ -128,7 +128,7 @@ public class XtimerEmptyScanCpuDemo {
         return checksum;
     }
 
-    private static List<String> buildMinuteBucketKeys() {
+    static List<String> buildMinuteBucketKeys() {
         List<String> keys = new ArrayList<String>();
         String previousMinute = "2026-03-30 10:14";
         String currentMinute = "2026-03-30 10:15";
@@ -139,7 +139,7 @@ public class XtimerEmptyScanCpuDemo {
         return keys;
     }
 
-    private static long resolvePid() {
+    static long resolvePid() {
         String runtimeName = ManagementFactory.getRuntimeMXBean().getName();
         int atIndex = runtimeName.indexOf('@');
         if (atIndex <= 0) {

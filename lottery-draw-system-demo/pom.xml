@@ -11,10 +11,10 @@
     </parent>
 
     <groupId>com.example</groupId>
-    <artifactId>cpu-high-troubleshooting-demo</artifactId>
+    <artifactId>lottery-draw-system-demo</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>cpu-high-troubleshooting-demo</name>
-    <description>Teaching demo for production CPU high troubleshooting in xtimer ScheduleCenter</description>
+    <name>lottery-draw-system-demo</name>
+    <description>Teaching demo for designing a high-concurrency lottery system</description>
 
     <properties>
         <java.version>1.8</java.version>
@@ -23,15 +23,7 @@
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

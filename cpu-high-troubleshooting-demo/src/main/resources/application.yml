@@ -1,3 +1,30 @@
+spring:
+  application:
+    name: cpu-high-troubleshooting-demo
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %msg%n"
+
 teaching:
   runner:
     enabled: true
+
+demo:
+  node-id: cpu-node-a
+  scenario:
+    auto-start: none
+    duration-seconds: 0
+    log-interval-seconds: 5
